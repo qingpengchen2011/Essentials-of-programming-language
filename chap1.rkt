@@ -207,3 +207,15 @@
         (if (pred (car lst))
             (cons (car lst) (filter-in pred (cdr lst)))
             (filter-in pred (cdr lst))))))
+
+;;exercise1.23
+(define list-index
+  (lambda (pred lst)
+    (list-index-n pred lst 0)))
+(define list-index-n
+  (lambda (pred lst i)
+    (if (null? lst)
+        #f
+        (if (pred (car lst))
+            i
+            (list-index-n pred (cdr lst) (+ i 1))))))
