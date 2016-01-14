@@ -324,3 +324,13 @@
     (if (leaf? bintree)
         bintree
         (car bintree))))
+
+;;exercise1.32
+(define double-tree
+  (lambda (bintree)
+    (if (leaf? bintree)
+        (* 2 bintree)
+        (interior-node (contents-of bintree)
+                       (double-tree (lson bintree))
+                       (double-tree (rson bintree))))))
+                            
