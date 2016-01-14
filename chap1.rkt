@@ -219,3 +219,12 @@
         (if (pred (car lst))
             i
             (list-index-n pred (cdr lst) (+ i 1))))))
+
+;;exercise1.24
+(define every?
+  (lambda (pred lst)
+    (if (null? lst)
+        #t
+        (if (pred (car lst))
+            (every? pred (cdr lst))
+            #f))))
