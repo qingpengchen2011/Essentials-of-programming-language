@@ -149,3 +149,17 @@
         (cons (list (car lst))
               (down (cdr lst))))))
 
+;;exercise1.18
+(define swrapper
+  (lambda (s1 s2 slist)
+    (if (null? slist)
+        '()
+        (cons (swrapper-s-exp s1 s2 (car slist))
+              (swrapper s1 s2 (cdr slist))))))
+(define swrapper-s-exp
+  (lambda (s1 s2 sexp)
+    (if (symbol? sexp)
+        (cond ((eqv? s1 sexp) s2)
+              ((eqv? s2 sexp) s1)
+              (else sexp))
+        (swrapper s1 s2 sexp))))
