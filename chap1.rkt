@@ -198,3 +198,12 @@
                        (list (car sos1) sym2))
                      sos2)
                 (product (cdr sos1) sos2)))))
+
+;;exercise1.22
+(define filter-in
+  (lambda (pred lst)
+    (if (null? lst)
+        '()
+        (if (pred (car lst))
+            (cons (car lst) (filter-in pred (cdr lst)))
+            (filter-in pred (cdr lst))))))
