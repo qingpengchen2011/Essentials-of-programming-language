@@ -270,3 +270,18 @@
           (else
            (cons (car loi2)
                  (merge loi1 (cdr loi2)))))))
+
+;;exercise1.29
+(define sort
+  (lambda (lst)
+    (if (null? lst)
+        '()
+        (insert-at (car lst) (sort (cdr lst))))))
+(define insert-at
+  (lambda (n lst)
+    (if (null? lst)
+        (list n)
+        (if (>= n (car lst))
+            (cons (car lst) (insert-at n (cdr lst)))
+            (cons n lst)))))
+         
