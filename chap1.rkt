@@ -350,7 +350,15 @@
             (interior-node (contents-of bintree)
                            (mark-leaves-with-red-depth-beginwith n (lson bintree))
                            (mark-leaves-with-red-depth-beginwith n (rson bintree)))))))
-                            
+
+;;exercise1.34
+(define path
+  (lambda (n bintree)
+    (if (= n (contents-of bintree))
+        '()
+        (if (< (contents-of bintree) n)
+            (cons 'right (path n (rson bintree)))
+            (cons 'left (path n (lson bintree)))))))
 
 
 ;;exercise1.36
