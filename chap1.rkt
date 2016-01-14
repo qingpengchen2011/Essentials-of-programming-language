@@ -360,6 +360,21 @@
             (cons 'right (path n (rson bintree)))
             (cons 'left (path n (lson bintree)))))))
 
+;;exercise1.35
+(define number-leaves
+  (lambda (bintree)
+    (cadr (count-and-change-leaves bintree 0))))
+(define count-and-change-leaves
+  (lambda (bintree n)
+    (if (leaf? bintree)
+        (list (+ n 1) n)
+        (let ((newleft (count-and-change-leaves (lson bintree) n)))
+          (let ((newright (count-and-change-leaves (rson bintree) (car newleft))))
+            (list (car newright)
+                  (interior-node (contents-of bintree)
+                                 (cadr newleft)
+                                 (cadr newright))))))))
+               
 
 ;;exercise1.36
 (define number-elements-g
