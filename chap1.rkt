@@ -351,3 +351,19 @@
                            (mark-leaves-with-red-depth-beginwith n (lson bintree))
                            (mark-leaves-with-red-depth-beginwith n (rson bintree)))))))
                             
+
+
+;;exercise1.36
+(define number-elements-g
+  (lambda (lst)
+    (if (null? lst)
+        '()
+        (g (list 0 (car lst))
+           (number-elements-g (cdr lst))))))
+(define g
+  (lambda (h t)
+    (cons h
+    (map (lambda (p)
+           (cons (+ (car p) 1)
+                 (cdr p))) t))))
+               
