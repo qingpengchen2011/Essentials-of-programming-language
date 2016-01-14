@@ -284,4 +284,16 @@
         (if (>= n (car lst))
             (cons (car lst) (insert-at n (cdr lst)))
             (cons n lst)))))
-         
+;;exercise1.30
+(define sort/predicate
+  (lambda (pred loi)
+    (if (null? loi)
+        '()
+        (insert-at-withpred pred (car loi) (sort/predicate pred (cdr loi))))))
+(define insert-at-withpred
+  (lambda (pred i loi)
+          (if (null? loi)
+              (list i)
+              (if (pred i (car loi))
+                  (cons i loi)
+                  (cons (car loi) (insert-at-withpred pred i (cdr loi)))))))
