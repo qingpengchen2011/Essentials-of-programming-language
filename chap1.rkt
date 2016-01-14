@@ -228,3 +228,12 @@
         (if (pred (car lst))
             (every? pred (cdr lst))
             #f))))
+
+;;exercise1.25
+(define exist?
+  (lambda (pred lst)
+    (if (null? lst)
+        #f
+        (if (pred (car lst))
+            #t
+            (exist? pred (cdr lst))))))
