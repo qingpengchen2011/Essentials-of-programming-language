@@ -297,3 +297,30 @@
               (if (pred i (car loi))
                   (cons i loi)
                   (cons (car loi) (insert-at-withpred pred i (cdr loi)))))))
+
+;;exercise1.31
+(define leaf
+  (lambda (n)
+          n))
+
+(define interior-node
+  (lambda (sym ltree rtree)
+    (list sym ltree rtree)))
+
+(define leaf?
+  (lambda (bintree)
+          (not (list? bintree))))
+
+(define lson
+  (lambda (bintree)
+    (cadr bintree)))
+
+(define rson
+  (lambda (bintree)
+    (caddr bintree)))
+
+(define contents-of
+  (lambda (bintree)
+    (if (leaf? bintree)
+        bintree
+        (car bintree))))
