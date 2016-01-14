@@ -333,4 +333,21 @@
         (interior-node (contents-of bintree)
                        (double-tree (lson bintree))
                        (double-tree (rson bintree))))))
+
+
+;;exercise1.33
+(define mark-leaves-with-red-depth
+  (lambda (bintree)
+    (mark-leaves-with-red-depth-beginwith 0 bintree)))
+(define mark-leaves-with-red-depth-beginwith
+  (lambda (n bintree)
+    (if (leaf? bintree)
+        n
+        (if (eqv? 'red (contents-of bintree))
+            (interior-node (contents-of bintree)
+                           (mark-leaves-with-red-depth-beginwith (+ n 1) (lson bintree))
+                           (mark-leaves-with-red-depth-beginwith (+ n 1) (rson bintree)))
+            (interior-node (contents-of bintree)
+                           (mark-leaves-with-red-depth-beginwith n (lson bintree))
+                           (mark-leaves-with-red-depth-beginwith n (rson bintree)))))))
                             
