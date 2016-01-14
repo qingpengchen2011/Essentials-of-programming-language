@@ -237,3 +237,12 @@
         (if (pred (car lst))
             #t
             (exist? pred (cdr lst))))))
+
+;;exercise1.26
+(define up
+  (lambda (lst)
+    (if (null? lst)
+        '()
+        (if (list? (car lst))
+            (append (car lst) (up (cdr lst)))
+            (cons (car lst) (up (cdr lst)))))))
