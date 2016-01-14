@@ -117,3 +117,13 @@
 (define number-elements
   (lambda (lst)
     (number-elements-from lst 0)))
+
+;;;section1.4 exercises
+
+;;exercise1.15
+;;duple: Int * SchemeVal -> ListOf(SchemeVal)
+(define duple
+  (lambda (n x)
+    (if (zero? n)
+        '()
+        (cons x (duple (- n 1) x)))))
