@@ -127,3 +127,16 @@
     (if (zero? n)
         '()
         (cons x (duple (- n 1) x)))))
+
+;;exercise1.16
+;;invert:
+(define invert
+  (lambda (lst)
+    (if (null? lst)
+        '()
+        (cons (swap (car lst))
+              (invert (cdr lst))))))
+(define swap
+  (lambda (lst)
+          (list (cadr lst)
+                (car lst))))
