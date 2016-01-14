@@ -173,3 +173,19 @@
         (if (zero? n)
             (cons x (cdr lst))
             (cons (car lst) (list-set (cdr lst) (- n 1) x))))))
+
+;;exercise1.20
+(define count-occurrences
+  (lambda (s slist)
+    (if (null? slist)
+        0
+        (+ (count-occurrences-in-sexp s (car slist))
+           (count-occurrences s (cdr slist))))))
+(define count-occurrences-in-sexp
+  (lambda (s sexp)
+    (if (symbol? sexp)
+        (if (eqv? s sexp)
+            1
+            0)
+        (count-occurrences s sexp))))
+
