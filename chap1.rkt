@@ -54,7 +54,7 @@
             (cons (car los) (remove s (cdr los)))))))
 
 
-;;occurs-free? Sym * LcExp -> Bool
+;;occurs-free?:  Sym * LcExp -> Bool
 (define occurs-free?
   (lambda (var exp)
     (cond
@@ -65,4 +65,45 @@
       (else
        (or (occurs-free? var (car exp))
            (occurs-free? var (cadr exp)))))))
-             
+
+;;subst: Sym * Sym * S-list -> S-list
+(define subst
+  (lambda (old new slist)
+    (if (null? slist)
+        '()
+        (cons (subst-in-s-exp old new (car slist))
+              (subst old new (cdr slist))))))
+;;subst-in-s-exp: Sym * Sym * S-exp -> S-exp
+(define subst-in-s-exp
+  (lambda (old new sexp)
+    (if (symbol? sexp)
+        (if (eqv? old sexp)
+            new
+            sexp)
+        (subst old new sexp))))
+;;exercise1.12
+;;subst2: Sym * Sym * S-list -> S-list
+(define subst2
+  (lambda (old new slist)
+    (if (null? slist)
+        '()
+        (cons (if (symbol? (car slist))
+                  (if (eqv? old (car slist))
+                      new
+                      (car slist))
+                  (subst2 old new (car slist)))
+              (subst2 old new (cdr slist))))))
+
+;;exercise1.13
+;;subst3: Sym * Sym * S-list -> S-list
+(define subst3
+  (lambda (old new slist)
+    (map (lambda (sexp)
+           (if (symbol? sexp)
+               (if (eqv? old sexp)
+                   new
+                   sexp)
+               (subst3 old new sexp)))
+         slist)))
+                       
+          
