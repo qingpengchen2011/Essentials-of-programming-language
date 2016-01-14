@@ -163,3 +163,13 @@
               ((eqv? s2 sexp) s1)
               (else sexp))
         (swrapper s1 s2 sexp))))
+
+;;exercise1.19
+(define list-set
+  (lambda (lst n x)
+    (if (null? lst)
+        (eopl:error 'list-set
+                    "list too short")
+        (if (zero? n)
+            (cons x (cdr lst))
+            (cons (car lst) (list-set (cdr lst) (- n 1) x))))))
