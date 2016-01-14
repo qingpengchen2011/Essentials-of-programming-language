@@ -246,3 +246,16 @@
         (if (list? (car lst))
             (append (car lst) (up (cdr lst)))
             (cons (car lst) (up (cdr lst)))))))
+
+;;exercise1.27
+(define flatten
+  (lambda (slist)
+    (if (null? slist)
+        '()
+        (append (flatten-s-exp (car slist))
+                (flatten (cdr slist))))))
+(define flatten-s-exp
+  (lambda (sexp)
+    (if (symbol? sexp)
+        (list sexp)
+        (flatten sexp))))
