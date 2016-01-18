@@ -52,4 +52,67 @@
   (lambda (env search-var)
     (env search-var)))
 
+;;section2.3
+;;exercise2.15
+(define var-exp
+  (lambda (var)
+    var))
+
+(define lambda-exp
+  (lambda (var lc-exp)
+    (list 'lambda var lc-exp)))
+
+(define app-exp
+  (lambda (rator rand)
+    (list 'application rator rand)))
+
+(define var-exp?
+  (lambda (exp)
+    (not (list? exp))))
+
+(define lambda-exp?
+  (lambda (exp)
+    (and (list? exp)
+         (eqv? 'lambda (car exp)))))
+
+(define app-exp?
+  (lambda (exp)
+    (and (list? exp)
+         (eqv? 'application (car exp)))))
+
+(define var-exp->var
+  (lambda (exp)
+          exp))
+
+(define lambda-exp->bound-var
+  (lambda (exp)
+    (cadr exp)))
+
+(define lambda-exp->body
+  (lambda (exp)
+    (caddr exp)))
+
+(define app-exp->rator
+  (lambda (exp)
+    (cadr exp)))
+
+(define app-exp->rand
+  (lambda (exp)
+    (caddr exp)))
+
+(define occurs-free?
+  (lambda (search-var LcExp)
+    (cond ((var-exp? LcExp)
+           (eqv? search-var (var-exp->var LcExp)))
+          ((lambda-exp? LcExp)
+           (and (not (eqv? search-var (lambda-exp->bound-var LcExp)))
+                (occurs-free? search-var (lambda-exp->body LcExp))))
+          ((app-exp? LcExp)
+           (or (occurs-free? search-var (app-exp->rator LcExp))
+               (occurs-free? search-var (app-exp->rand LcExp))))
+          (else
+           (eopl:error 'occurs-free? "invalid LcExp ~s" LcExp)))))
+           
+
+
 
