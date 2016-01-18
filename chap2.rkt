@@ -114,5 +114,36 @@
            (eopl:error 'occurs-free? "invalid LcExp ~s" LcExp)))))
            
 
+;;exercise2.18
+(define number->sequence
+  (lambda (number)
+    (list number '() '())))
 
+
+(define current-element
+  (lambda (seq)
+    (car seq)))
+
+(define move-to-left
+  (lambda (seq)
+    (let ((current (current-element seq))
+          (left-hand (cadr seq))
+          (right-hand (caddr seq)))
+      (if (null? left-hand)
+          (eopl:error 'move-to-left "~s is at left end" seq)
+          (list (car left-hand)
+                (cdr left-hand)
+                (cons current right-hand))))))
+
+(define move-to-right
+  (lambda (seq)
+    (let ((current (current-element seq))
+          (left-hand (cadr seq))
+          (right-hand (caddr seq)))
+      (if (null? right-hand)
+          (eopl:error 'move-to-right "~s is at right end" seq)
+          (list (car right-hand)
+                (cons current left-hand)
+                (cdr right-hand))))))
+                
 
