@@ -145,5 +145,48 @@
           (list (car right-hand)
                 (cons current left-hand)
                 (cdr right-hand))))))
-                
+
+;;exercise2.19
+
+(define number->bintree
+  (lambda (number)
+    (list number '() '())))
+
+(define current-tree-element
+  (lambda (bintree)
+    (car bintree)))
+
+(define move-to-left-son
+  (lambda (bintree)
+    (cadr bintree)))
+
+(define move-to-right-son
+  (lambda (bintree)
+    (caddr bintree)))
+
+(define at-leaf?
+  (lambda (bintree)
+    (null? bintree)))
+               
+
+(define insert-to-left
+  (lambda (number bintree)
+    (letrec ((current-element (current-tree-element bintree))
+          (left-son (move-to-left-son bintree))
+          (right-son (move-to-right-son bintree))
+          (new-left-son (list number left-son '())))
+      (list current-element new-left-son right-son))))
+
+(define insert-to-right
+  (lambda (number bintree)
+    (letrec ((current-element (current-tree-element bintree))
+          (left-son (move-to-left-son bintree))
+          (right-son (move-to-right-son bintree))
+          (new-right-son (list number '() right-son)))
+      (list current-element left-son new-right-son))))
+          
+
+
+
+             
 
