@@ -36,3 +36,20 @@
     (eopl:error 'apply-env "Bad environments ~s" env)))
 
 
+;;;section2.2.3
+(define empty-env-p
+  (lambda ()
+    (lambda (search-var)
+      (report-no-binding-found search-var))))
+
+(define extend-env-p
+  (lambda (var val env)
+    (lambda (search-var)
+      (if (eqv? search-var var)
+          val
+          (apply-env-p env search-var)))))
+(define apply-env-p
+  (lambda (env search-var)
+    (env search-var)))
+
+
