@@ -1,7 +1,7 @@
 #lang eopl
 ;;section 2.4
 
-(define identifier? symbol?)
+
 
 (define-datatype lc-exp lc-exp?
   (var-exp (var identifier?))
@@ -24,3 +24,9 @@
                   (if (eqv? var search-var)
                       #t
                   (has-binding? search-var saved-env))))))
+
+;;exercise2.23
+(define identifier?
+  (lambda (id)
+    (and (symbol? id)
+         (not (eqv? 'lambda id)))))
