@@ -2,7 +2,6 @@
 
 
 
-
 ;;;section2.2.2
 (define empty-env
   (lambda ()
@@ -35,6 +34,7 @@
   (lambda (env)
     (eopl:error 'apply-env "Bad environments ~s" env)))
 
+(provide empty-env extend-env apply-env)
 
 ;;;section2.2.3
 (define empty-env-p

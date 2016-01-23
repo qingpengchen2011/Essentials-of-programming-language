@@ -33,6 +33,8 @@
     (and (symbol? id)
          (not (eqv? 'lambda id)))))
 
+(provide identifier?)
+
 ;;exercise2.24
 (define-datatype bintree bintree?
   (leaf-node (num integer?))
