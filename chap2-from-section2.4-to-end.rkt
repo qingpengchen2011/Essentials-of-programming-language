@@ -1,4 +1,6 @@
 #lang eopl
+(require racket/format)
+(require racket/string)
 ;;section 2.4
 
 
@@ -104,3 +106,17 @@
                   (list 'lambda (list bound-var) (unparse-lc-expression body)))
       (app-exp (rator rand)
                (list (unparse-lc-expression rator) (unparse-lc-expression rand))))))
+
+;;exercise2.28
+(define unparse-lc-expression2
+  (lambda (exp)
+    (cases lc-exp exp
+      (var-exp (var) (~a var))
+      (lambda-exp (bound-var body)
+                  (string-join (list "proc" (~a bound-var) "=>" (unparse-lc-expression2 body)) " "))
+      (app-exp (rator rand)
+               (string-append (unparse-lc-expression2 rator)
+                              "("
+                              (unparse-lc-expression2 rand)
+                              ")")))))
+               
