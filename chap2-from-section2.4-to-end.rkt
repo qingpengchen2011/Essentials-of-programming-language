@@ -83,7 +83,24 @@
                                    (cons key
                                          current-max))))))))
      (cadddr (search-max-interior btree))))
-                                 
-                    
-                               
-                                 
+
+;;section2.5
+(define parse-expression
+  (lambda (datum)
+    (cond ((symbol? datum) (var-exp datum))
+          ((pair? datum)
+           (if (eqv? 'lambda (car datum))
+               (lambda-exp (car (cadr datum))
+                           (parse-expression (caddr datum)))
+               (app-exp (parse-expression (car datum))
+                        (parse-expression (cadr datum)))))
+          (else (eopl:error 'parse-expression "indvalid expression:~s" datum)))))
+
+(define unparse-lc-expression
+  (lambda (exp)
+    (cases lc-exp exp
+      (var-exp (var) var)
+      (lambda-exp (bound-var body)
+                  (list 'lambda (list bound-var) (unparse-lc-expression body)))
+      (app-exp (rator rand)
+               (list (unparse-lc-expression rator) (unparse-lc-expression rand))))))
