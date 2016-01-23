@@ -169,8 +169,29 @@
       (app-exp2 (rator rands)
                 (cons (unparse-lc-expression-multivars rator)
                       (unparse-app-rands rands))))))
-                
 
+;;exercise2.31
+(define-datatype prefix-exp prefix-exp?
+  (const-exp (num integer?))
+  (diff-exp
+   (operand1 prefix-exp?)
+   (operand2 prefix-exp?)))
 
+(define parse-polish-prefix-notation
+  (lambda (datum)
+    (if (null? datum)
+        '()
+        (if (not (eqv? '- (car datum)))
+            (cons (const-exp (car datum)) (cdr datum))
+            (letrec ((parsed1 (parse-polish-prefix-notation (cdr datum))))
+              (if (and (pair? parsed1)
+                   (not (null? parsed1)))
+                  (letrec ((operand1 (car parsed1))
+                            (parsed2 (parse-polish-prefix-notation (cdr parsed1))))
+                            (cons (diff-exp operand1 (car parsed2)) (cdr parsed2)))
+                  (cons parsed1 '())))))))
+              
+
+(parse-polish-prefix-notation '(- - 3 2 - 4 - 12 7))
 
           
