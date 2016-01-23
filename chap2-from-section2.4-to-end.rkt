@@ -119,4 +119,58 @@
                               "("
                               (unparse-lc-expression2 rand)
                               ")")))))
-               
+
+(define list-of
+  (lambda (pred)
+    (lambda (val)
+      (or (null? val)
+          (and (pair? val)
+               (pred (car val))
+               ((list-of pred) (cdr val)))))))
+
+;;exercise2.29
+(define-datatype lc-exp2 lc-exp2?
+  (var-exp2 (var identifier?))
+  (lambda-exp2 (bound-vars (list-of identifier?))
+               (body lc-exp2?))
+  (app-exp2 (rator lc-exp2?)
+            (rands (list-of lc-exp2?))))
+
+(define parse-expression-multivars
+  (lambda (datum)
+ (define parse-lambda-args
+    (lambda (list-of-args) list-of-args))
+  (define parse-apply-args
+    (lambda (list-of-vals)
+      (if (null? list-of-vals)
+          '()
+          (cons (parse-expression-multivars (car list-of-vals)) (parse-apply-args (cdr list-of-vals))))))
+    (cond
+      ((symbol? datum) (var-exp2 datum))
+      ((pair? datum)
+       (if (eqv? 'lambda (car datum))
+           (lambda-exp2 (parse-lambda-args (cadr datum))
+                        (parse-expression-multivars (caddr datum)))
+           (app-exp2 (parse-expression-multivars (car datum))
+                     (parse-apply-args (cdr datum))))))))
+
+(define unparse-lc-expression-multivars
+  (lambda (exp)
+    (define unparse-app-rands
+      (lambda (rands)
+        (if (null? rands)
+            '()
+            (cons (unparse-lc-expression-multivars (car rands))
+                  (unparse-app-rands (cdr rands))))))
+    (cases lc-exp2 exp
+      (var-exp2 (var) var)
+      (lambda-exp2 (bound-vars body)
+                   (list 'lambda bound-vars (unparse-lc-expression-multivars body)))
+      (app-exp2 (rator rands)
+                (cons (unparse-lc-expression-multivars rator)
+                      (unparse-app-rands rands))))))
+                
+
+
+
+          
