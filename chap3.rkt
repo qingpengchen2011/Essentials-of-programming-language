@@ -14,6 +14,9 @@
   (const-exp (num number?))
   (minus-exp (exp expression?))
   (diff-exp (exp1 expression?) (exp2 expression?))
+  (add-exp (exp1 expression?) (exp2 expression?))
+  (multiply-exp (exp1 expression?) (exp2 expression?))
+  (quotient-exp (exp1 expression?) (exp2 expression?))
   (zero?-exp (exp1 expression?))
   (if-exp (exp1 expression?) (exp2 expression?) (exp3 expression?))
   (var-exp (var identifier?))
@@ -57,6 +60,11 @@
 
 (define value-of
   (lambda (exp env)
+    (define arithmetic-operation
+      (lambda (op exp1 exp2 env)
+        (let ((val1 (value-of exp1 env))
+              (val2 (value-of exp2 env)))
+          (num-val (op (expval->num val1) (expval->num val2))))))
     (cases expression exp
       (const-exp (num) (num-val num))
       (minus-exp (exp) (num-val (- 0 (expval->num (value-of exp env)))))
@@ -65,6 +73,16 @@
                 (let ((val1 (value-of exp1 env))
                       (val2 (value-of exp2 env)))
                   (num-val (- (expval->num val1) (expval->num val2)))))
+      (add-exp (exp1 exp2)
+               (let ((val1 (value-of exp1 env))
+                     (val2 (value-of exp2 env)))
+                 (num-val (+ (expval->num val1) (expval->num val2)))))
+      (multiply-exp (exp1 exp2)
+                    (let ((val1 (value-of exp1 env))
+                          (val2 (value-of exp2 env)))
+                      (num-val (* (expval->num val1) (expval->num val2)))))
+      (quotient-exp (exp1 exp2)
+                    (arithmetic-operation remainder exp1 exp2 env))
       (zero?-exp (exp)
                  (let ((val (value-of exp env)))
                    (if (zero? (expval->num val))
@@ -95,6 +113,9 @@
     (expression (identifier) var-exp)
     (expression ("minus" "(" expression ")") minus-exp)
     (expression ("-" "(" expression "," expression ")") diff-exp)
+    (expression ("+" "(" expression "," expression ")") add-exp)
+    (expression ("*" "(" expression "," expression ")") multiply-exp)
+    (expression ("//" "(" expression "," expression ")") quotient-exp)
     (expression ("zero?" "(" expression ")") zero?-exp)
     (expression ("if" expression "then" expression "else" expression) if-exp)
     (expression ("let" identifier "=" expression "in" expression) let-exp)
@@ -111,4 +132,7 @@
 
 ;;test for exercise3.6
 (run " minus(-(minus(5),9))")
+
+;;test for exercise3.6
+(run "+(//(13,4),*(minus(3), 2))")
 
