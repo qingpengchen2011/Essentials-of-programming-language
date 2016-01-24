@@ -12,6 +12,7 @@
 
 (define-datatype expression expression?
   (const-exp (num number?))
+  (minus-exp (exp expression?))
   (diff-exp (exp1 expression?) (exp2 expression?))
   (zero?-exp (exp1 expression?))
   (if-exp (exp1 expression?) (exp2 expression?) (exp3 expression?))
@@ -58,6 +59,7 @@
   (lambda (exp env)
     (cases expression exp
       (const-exp (num) (num-val num))
+      (minus-exp (exp) (num-val (- 0 (expval->num (value-of exp env)))))
       (var-exp (var) (apply-env env var))
       (diff-exp (exp1 exp2)
                 (let ((val1 (value-of exp1 env))
@@ -91,6 +93,7 @@
     (program (expression) a-program)
     (expression (number) const-exp)
     (expression (identifier) var-exp)
+    (expression ("minus" "(" expression ")") minus-exp)
     (expression ("-" "(" expression "," expression ")") diff-exp)
     (expression ("zero?" "(" expression ")") zero?-exp)
     (expression ("if" expression "then" expression "else" expression) if-exp)
@@ -105,4 +108,7 @@
     (value-of-program (scan&parse string))))
 
 (define testp "let x = 1 in if zero?(-(x,i)) then 10 else 100")
+
+;;test for exercise3.6
+(run " minus(-(minus(5),9))")
 
