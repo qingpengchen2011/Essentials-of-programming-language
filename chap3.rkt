@@ -133,6 +133,6 @@
 ;;test for exercise3.6
 (run " minus(-(minus(5),9))")
 
-;;test for exercise3.6
+;;test for exercise3.7
 (run "+(//(13,4),*(minus(3), 2))")
 
