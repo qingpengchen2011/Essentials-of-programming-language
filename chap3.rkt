@@ -104,4 +104,5 @@
   (lambda (string)
     (value-of-program (scan&parse string))))
 
+(define testp "let x = 1 in if zero?(-(x,i)) then 10 else 100")
 
