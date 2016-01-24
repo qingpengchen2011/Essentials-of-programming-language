@@ -18,6 +18,9 @@
   (multiply-exp (exp1 expression?) (exp2 expression?))
   (quotient-exp (exp1 expression?) (exp2 expression?))
   (zero?-exp (exp1 expression?))
+  (equal?-exp (exp1 expression?) (exp2 expression?))
+  (greater?-exp (exp1 expression?) (exp2 expression?))
+  (less?-exp (exp1 expression?) (exp2 expression?))
   (if-exp (exp1 expression?) (exp2 expression?) (exp3 expression?))
   (var-exp (var identifier?))
   (let-exp (var identifier?) (exp1 expression?) (body expression?)))
@@ -70,24 +73,37 @@
       (minus-exp (exp) (num-val (- 0 (expval->num (value-of exp env)))))
       (var-exp (var) (apply-env env var))
       (diff-exp (exp1 exp2)
-                (let ((val1 (value-of exp1 env))
-                      (val2 (value-of exp2 env)))
-                  (num-val (- (expval->num val1) (expval->num val2)))))
+                (arithmetic-operation - exp1 exp2 env))
+      
       (add-exp (exp1 exp2)
-               (let ((val1 (value-of exp1 env))
-                     (val2 (value-of exp2 env)))
-                 (num-val (+ (expval->num val1) (expval->num val2)))))
+               (arithmetic-operation + exp1 exp2 env))
+     
       (multiply-exp (exp1 exp2)
-                    (let ((val1 (value-of exp1 env))
-                          (val2 (value-of exp2 env)))
-                      (num-val (* (expval->num val1) (expval->num val2)))))
+                    (arithmetic-operation * exp1 exp2 env))
+      
       (quotient-exp (exp1 exp2)
                     (arithmetic-operation remainder exp1 exp2 env))
+      
       (zero?-exp (exp)
                  (let ((val (value-of exp env)))
                    (if (zero? (expval->num val))
                        (bool-val #t)
                        (bool-val #f))))
+      (equal?-exp (exp1 exp2)
+                  (let ((val1 (value-of exp1 env))
+                        (val2 (value-of exp2 env)))
+                    (if (eqv? (expval->num val1) (expval->num val2))
+                        (bool-val #t)
+                        (bool-val #f))))
+      (greater?-exp (exp1 exp2)
+                   (let ((val1 (value-of exp1 env))
+                         (val2 (value-of exp2 env)))
+                     (bool-val (> (expval->num val1) (expval->num  val2)))))
+      (less?-exp (exp1 exp2)
+                 (let ((val1 (value-of exp1 env))
+                       (val2 (value-of exp2 env)))
+                   (bool-val (< (expval->num val1) (expval->num val2)))))
+                    
 
      (if-exp (exp1 exp2 exp3)
              (if (expval->bool (value-of exp1 env))
@@ -117,6 +133,9 @@
     (expression ("*" "(" expression "," expression ")") multiply-exp)
     (expression ("//" "(" expression "," expression ")") quotient-exp)
     (expression ("zero?" "(" expression ")") zero?-exp)
+    (expression ("equal?" "(" expression "," expression ")") equal?-exp)
+    (expression ("greater?" "(" expression "," expression ")") greater?-exp)
+    (expression ("less?" "(" expression "," expression ")") less?-exp)
     (expression ("if" expression "then" expression "else" expression) if-exp)
     (expression ("let" identifier "=" expression "in" expression) let-exp)
     ))
@@ -135,4 +154,13 @@
 
 ;;test for exercise3.7
 (run "+(//(13,4),*(minus(3), 2))")
+
+;;test for exercise3.8
+(run "equal?(//(13,4),minus(minus(1)))")
+(run "equal?(//(minus(13),4),minus(minus(1)))")
+
+(run "greater?(//(13,4),minus(2))")
+(run "less?(//(13,4),minus(2))")
+(run "greater?(//(13,minus(4)),2)")
+(run "less?(//(13,minus(4)),2)")
 
