@@ -26,6 +26,9 @@
   (let-exp (var identifier?) (exp1 expression?) (body expression?))
   (emptylist-exp)
   (cons-exp (exp1 expression?) (exp2 expression?))
+  (car-exp (exp expression?))
+  (cdr-exp (exp expression?))
+  (null?-exp (exp expression?))
   )
 
 ;;define expressed value
@@ -122,6 +125,15 @@
       (let-exp (var exp1 body)
                (value-of body (extend-env var (value-of exp1 env) env)))
       (emptylist-exp () (list-val '()))
+      (car-exp (exp)
+               (let ((val (value-of exp env)))
+                 (car (expval->list val))))
+      (cdr-exp (exp)
+               (let ((val (value-of exp env)))
+                 (list-val (cdr (expval->list val)))))
+      (null?-exp (exp)
+                 (let ((val (value-of exp env)))
+                   (bool-val (null? (expval->list val)))))
       (cons-exp (exp1 exp2)
                 (let ((val1 (value-of exp1 env))
                       (val2 (value-of exp2 env)))
@@ -156,6 +168,9 @@
     (expression ("let" identifier "=" expression "in" expression) let-exp)
     (expression ("emptylist") emptylist-exp)
     (expression ("cons" "(" expression "," expression ")") cons-exp)
+    (expression ("car" "(" expression ")") car-exp)
+    (expression ("cdr" "(" expression ")") cdr-exp)
+    (expression ("null?" "(" expression ")") null?-exp)
     ))
 
 (define scan&parse
@@ -183,4 +198,15 @@
 (run "less?(//(13,minus(4)),2)")
 
 ;;test for exercise3.9
+;;test for cons
 (run "let x = 4 in cons(x,cons(cons(-(x,1),emptylist),emptylist))")
+
+;;test for car 
+(run "let y = let x = 4 in cons(x,cons(cons(-(x,1),emptylist),emptylist)) in car(y)")
+
+;;test for cdr
+(run "let y = let x = 4 in cons(x,cons(cons(-(x,1),emptylist),emptylist)) in cdr(y)")
+
+;;test for null?
+(run "null?(cons(1,emptylist))")
+(run "null?(emptylist)")
