@@ -1,5 +1,6 @@
 #lang eopl
 
+
 (require  "./chap2.rkt")
 (require  "./chap2-from-section2.4-to-end.rkt")
 
@@ -27,6 +28,7 @@
   (cdr-exp (exp expression?))
   (list-exp (exps (list-of expression?)))
   (cond-exp (preds (list-of boolexpression?)) (consequences (list-of expression?)))
+  (print-exp (exp expression?))
   )
 
 (define-datatype boolexpression boolexpression?
@@ -80,6 +82,27 @@
       (a-program (exp)
                  (value-of exp (init-env))))))
 
+
+;;evalute bool expression
+(define value-of-bool-exp
+      (lambda (exp env)
+        (define compare-operation
+          (lambda (op exp1 exp2 env)
+            (let ((val1 (value-of exp1 env))
+                  (val2 (value-of exp2 env)))
+              (bool-val (op (expval->num val1) (expval->num val2))))))
+        (cases boolexpression exp
+          (equal?-bool-exp (exp1 exp2)
+                           (compare-operation eqv? exp1 exp2 env))
+          (greater?-bool-exp (exp1 exp2)
+                             (compare-operation > exp1 exp2 env))
+          (less?-bool-exp (exp1 exp2)
+                          (compare-operation < exp1 exp2 env))
+          (zero?-bool-exp (exp)
+                          (bool-val (zero? (expval->num (value-of exp env)))))
+          (null?-bool-exp (exp)
+                          (bool-val (null? (expval->list (value-of exp env))))))))
+
 (define value-of
   (lambda (exp env)
     (define arithmetic-operation
@@ -101,24 +124,7 @@
                 (value-of (car cons) env)
                 (evaluate-cond-exp (cdr preds) (cdr cons) env)))))
     
-    (define value-of-bool-exp
-      (lambda (exp env)
-        (define compare-operation
-          (lambda (op exp1 exp2 env)
-            (let ((val1 (value-of exp1 env))
-                  (val2 (value-of exp2 env)))
-              (bool-val (op (expval->num val1) (expval->num val2))))))
-        (cases boolexpression exp
-          (equal?-bool-exp (exp1 exp2)
-                           (compare-operation eqv? exp1 exp2 env))
-          (greater?-bool-exp (exp1 exp2)
-                             (compare-operation > exp1 exp2 env))
-          (less?-bool-exp (exp1 exp2)
-                          (compare-operation < exp1 exp2 env))
-          (zero?-bool-exp (exp)
-                          (bool-val (zero? (expval->num (value-of exp env)))))
-          (null?-bool-exp (exp)
-                          (bool-val (null? (expval->list (value-of exp env))))))))
+
     (cases expression exp
       (const-exp (num) (num-val num))
       (minus-exp (exp) (num-val (- 0 (expval->num (value-of exp env)))))
@@ -160,8 +166,9 @@
       (list-exp (exps)
                 (evaluate-list-exp exps env))
       (cond-exp (preds consequences)
-                (evaluate-cond-exp preds consequences env)))))
-
+                (evaluate-cond-exp preds consequences env))
+      (print-exp (exp)
+                 (begin (eopl:printf "~s" (value-of exp env)) (num-val 1))))))
 
 ;; lexical spec
 
@@ -191,12 +198,14 @@
     (expression ("cdr" "(" expression ")") cdr-exp)
     (expression ("list" "(" (separated-list expression ",") ")") list-exp)
     (expression ("cond" "{" (arbno boolexpression "==>" expression) "}" "end") cond-exp)
+    (expression ("print" "(" expression ")") print-exp)
 
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
     (boolexpression ("zero?" "(" expression ")") zero?-bool-exp)
     (boolexpression ("greater?" "(" expression "," expression ")") greater?-bool-exp)
     (boolexpression ("less?" "(" expression "," expression ")") less?-bool-exp)
     (boolexpression ("null?" "(" expression ")") null?-bool-exp)
+    
     ))
 
 (define scan&parse
@@ -249,3 +258,11 @@
 
 
 (run "if equal?(1,1) then 1 else 2")
+
+;;test for exercise3.15
+(run "let a = 1 in print(let b = 1 in cond {
+                                    zero?(a) ==> 0
+                                    greater?(a,i) ==> 1
+                                    zero?(-(a,i)) ==> 2
+                                    } end 
+)")
