@@ -23,12 +23,16 @@
   (less?-exp (exp1 expression?) (exp2 expression?))
   (if-exp (exp1 expression?) (exp2 expression?) (exp3 expression?))
   (var-exp (var identifier?))
-  (let-exp (var identifier?) (exp1 expression?) (body expression?)))
+  (let-exp (var identifier?) (exp1 expression?) (body expression?))
+  (emptylist-exp)
+  (cons-exp (exp1 expression?) (exp2 expression?))
+  )
 
 ;;define expressed value
 (define-datatype expval expval?
   (num-val (num number?))
-  (bool-val (bool boolean?)))
+  (bool-val (bool boolean?))
+  (list-val (list (list-of expval?))))
 
 
 (define expval->num
@@ -43,6 +47,12 @@
       (bool-val (bool) bool)
       (else (eopl:error 'expval->bool "not a bool value.~s" val)))))
 
+(define expval->list
+  (lambda (val)
+    (cases expval val
+      (list-val (list) list)
+      (else (eopl:error 'expval->list "not a list value.~s" val)))))
+ 
 
 ;;setup the init environment
 
@@ -105,12 +115,18 @@
                    (bool-val (< (expval->num val1) (expval->num val2)))))
                     
 
-     (if-exp (exp1 exp2 exp3)
+      (if-exp (exp1 exp2 exp3)
              (if (expval->bool (value-of exp1 env))
                  (value-of exp2 env)
                  (value-of exp3 env)))
       (let-exp (var exp1 body)
-               (value-of body (extend-env var (value-of exp1 env) env))))))
+               (value-of body (extend-env var (value-of exp1 env) env)))
+      (emptylist-exp () (list-val '()))
+      (cons-exp (exp1 exp2)
+                (let ((val1 (value-of exp1 env))
+                      (val2 (value-of exp2 env)))
+                  (list-val (cons val1 (expval->list val2))))))))
+                
 
 
 ;; lexical spec
@@ -138,6 +154,8 @@
     (expression ("less?" "(" expression "," expression ")") less?-exp)
     (expression ("if" expression "then" expression "else" expression) if-exp)
     (expression ("let" identifier "=" expression "in" expression) let-exp)
+    (expression ("emptylist") emptylist-exp)
+    (expression ("cons" "(" expression "," expression ")") cons-exp)
     ))
 
 (define scan&parse
@@ -164,3 +182,5 @@
 (run "greater?(//(13,minus(4)),2)")
 (run "less?(//(13,minus(4)),2)")
 
+;;test for exercise3.9
+(run "let x = 4 in cons(x,cons(cons(-(x,1),emptylist),emptylist))")
