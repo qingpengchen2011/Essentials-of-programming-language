@@ -21,7 +21,7 @@
   (bool-exp (exp1 boolexpression?))
   (if-bool-exp (exp1 boolexpression?) (exp2 expression?) (exp3 expression?))
   (var-exp (var identifier?))
-  (let-exp (var identifier?) (exp1 expression?) (body expression?))
+  (let-exp (vars (list-of identifier?)) (exps (list-of expression?)) (body expression?))
   (emptylist-exp)
   (cons-exp (exp1 expression?) (exp2 expression?))
   (car-exp (exp expression?))
@@ -123,6 +123,16 @@
             (if (expval->bool (value-of-bool-exp (car preds) env))
                 (value-of (car cons) env)
                 (evaluate-cond-exp (cdr preds) (cdr cons) env)))))
+
+    (define evaluate-let-exp
+      (lambda (vars exps body-exp argenv finalenv)
+        (if (null? vars)
+            (value-of body-exp finalenv)
+            (evaluate-let-exp (cdr vars)
+                              (cdr exps)
+                              body-exp
+                              argenv
+                              (extend-env (car vars) (value-of (car exps) argenv) finalenv)))))
     
 
     (cases expression exp
@@ -149,8 +159,9 @@
       (bool-exp (exp)
                 (value-of-bool-exp exp env))
               
-      (let-exp (var exp1 body)
-               (value-of body (extend-env var (value-of exp1 env) env)))
+      (let-exp (vars exps body)
+               (evaluate-let-exp vars exps body env env))
+      
       (emptylist-exp () (list-val '()))
       (car-exp (exp)
                (let ((val (value-of exp env)))
@@ -191,7 +202,7 @@
     (expression ("*" "(" expression "," expression ")") multiply-exp)
     (expression ("//" "(" expression "," expression ")") quotient-exp)
     (expression ("if" boolexpression "then" expression "else" expression) if-bool-exp)
-    (expression ("let" identifier "=" expression "in" expression) let-exp)
+    (expression ("let" (arbno identifier "=" expression) "in" expression) let-exp)
     (expression ("emptylist") emptylist-exp)
     (expression ("cons" "(" expression "," expression ")") cons-exp)
     (expression ("car" "(" expression ")") car-exp)
@@ -264,5 +275,11 @@
                                     zero?(a) ==> 0
                                     greater?(a,i) ==> 1
                                     zero?(-(a,i)) ==> 2
-                                    } end 
-)")
+                                    } end )")
+
+;;test for exercise3.16
+(run "let x = 30 in let x = -(x,1) y = -(x,2) in -(x,y)")
+
+
+(run "let x = 30 in let a = let x = -(x,1) y = -(x,2) in -(x,y) b = 2 in -(a,b)")
+
