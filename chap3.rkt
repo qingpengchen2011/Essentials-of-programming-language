@@ -29,6 +29,7 @@
   (car-exp (exp expression?))
   (cdr-exp (exp expression?))
   (null?-exp (exp expression?))
+  (list-exp (exps (list-of expression?)))
   )
 
 ;;define expressed value
@@ -81,6 +82,12 @@
         (let ((val1 (value-of exp1 env))
               (val2 (value-of exp2 env)))
           (num-val (op (expval->num val1) (expval->num val2))))))
+    (define evaluate-list-exp
+      (lambda (exps env)
+        (if (null? exps)
+            (list-val '())
+            (list-val (cons (value-of (car exps) env)
+                            (expval->list (evaluate-list-exp (cdr exps) env)))))))
     (cases expression exp
       (const-exp (num) (num-val num))
       (minus-exp (exp) (num-val (- 0 (expval->num (value-of exp env)))))
@@ -137,8 +144,9 @@
       (cons-exp (exp1 exp2)
                 (let ((val1 (value-of exp1 env))
                       (val2 (value-of exp2 env)))
-                  (list-val (cons val1 (expval->list val2))))))))
-                
+                  (list-val (cons val1 (expval->list val2)))))
+      (list-exp (exps)
+                (evaluate-list-exp exps env)))))
 
 
 ;; lexical spec
@@ -171,6 +179,7 @@
     (expression ("car" "(" expression ")") car-exp)
     (expression ("cdr" "(" expression ")") cdr-exp)
     (expression ("null?" "(" expression ")") null?-exp)
+    (expression ("list" "(" (separated-list expression ",") ")") list-exp)
     ))
 
 (define scan&parse
@@ -210,3 +219,6 @@
 ;;test for null?
 (run "null?(cons(1,emptylist))")
 (run "null?(emptylist)")
+
+;;test for exercise3.10
+(run "let x = 4 in list(x,-(x,1),-(x,3))")
