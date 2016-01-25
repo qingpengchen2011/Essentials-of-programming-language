@@ -22,6 +22,7 @@
   (if-bool-exp (exp1 boolexpression?) (exp2 expression?) (exp3 expression?))
   (var-exp (var identifier?))
   (let-exp (vars (list-of identifier?)) (exps (list-of expression?)) (body expression?))
+  (let*-exp (vars (list-of identifier?)) (exps (list-of expression?)) (body expression?))
   (emptylist-exp)
   (cons-exp (exp1 expression?) (exp2 expression?))
   (car-exp (exp expression?))
@@ -133,7 +134,14 @@
                               body-exp
                               argenv
                               (extend-env (car vars) (value-of (car exps) argenv) finalenv)))))
-    
+    (define evaluate-let*-exp
+      (lambda (vars exps body-exp env)
+        (if (null? vars)
+            (value-of body-exp env)
+            (evaluate-let*-exp (cdr vars)
+                               (cdr exps)
+                               body-exp
+                               (extend-env (car vars) (value-of (car exps) env) env)))))
 
     (cases expression exp
       (const-exp (num) (num-val num))
@@ -161,6 +169,9 @@
               
       (let-exp (vars exps body)
                (evaluate-let-exp vars exps body env env))
+
+      (let*-exp (vars exps body)
+                (evaluate-let*-exp vars exps body env))
       
       (emptylist-exp () (list-val '()))
       (car-exp (exp)
@@ -203,6 +214,7 @@
     (expression ("//" "(" expression "," expression ")") quotient-exp)
     (expression ("if" boolexpression "then" expression "else" expression) if-bool-exp)
     (expression ("let" (arbno identifier "=" expression) "in" expression) let-exp)
+    (expression ("let*" (arbno identifier "=" expression) "in" expression) let*-exp)
     (expression ("emptylist") emptylist-exp)
     (expression ("cons" "(" expression "," expression ")") cons-exp)
     (expression ("car" "(" expression ")") car-exp)
@@ -279,7 +291,13 @@
 
 ;;test for exercise3.16
 (run "let x = 30 in let x = -(x,1) y = -(x,2) in -(x,y)")
-
-
 (run "let x = 30 in let a = let x = -(x,1) y = -(x,2) in -(x,y) b = 2 in -(a,b)")
+
+
+
+;;test for exercise 3.17
+(run "let x = 30 in let* x= -(x,1) y = -(x,2) in -(x,y)")
+(run "let x = 30 in let* a = let x = -(x,1) y = -(x,2) in -(x,y) b = 2 in -(a,b)")
+
+
 
