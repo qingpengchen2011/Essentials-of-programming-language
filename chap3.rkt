@@ -30,6 +30,7 @@
   (cdr-exp (exp expression?))
   (null?-exp (exp expression?))
   (list-exp (exps (list-of expression?)))
+  (cond-exp (preds (list-of expression?)) (consequences (list-of expression?)))
   )
 
 ;;define expressed value
@@ -88,6 +89,13 @@
             (list-val '())
             (list-val (cons (value-of (car exps) env)
                             (expval->list (evaluate-list-exp (cdr exps) env)))))))
+    (define evaluate-cond-exp
+      (lambda (preds cons env)
+        (if (null? preds)
+            (eopl:error 'value-of "none of the cond expression's test condition success")
+            (if (expval->bool (value-of (car preds) env))
+                (value-of (car cons) env)
+                (evaluate-cond-exp (cdr preds) (cdr cons) env)))))
     (cases expression exp
       (const-exp (num) (num-val num))
       (minus-exp (exp) (num-val (- 0 (expval->num (value-of exp env)))))
@@ -146,7 +154,9 @@
                       (val2 (value-of exp2 env)))
                   (list-val (cons val1 (expval->list val2)))))
       (list-exp (exps)
-                (evaluate-list-exp exps env)))))
+                (evaluate-list-exp exps env))
+      (cond-exp (preds consequences)
+                (evaluate-cond-exp preds consequences env)))))
 
 
 ;; lexical spec
@@ -180,6 +190,7 @@
     (expression ("cdr" "(" expression ")") cdr-exp)
     (expression ("null?" "(" expression ")") null?-exp)
     (expression ("list" "(" (separated-list expression ",") ")") list-exp)
+    (expression ("cond" "{" (arbno expression "==>" expression) "}" "end") cond-exp)
     ))
 
 (define scan&parse
@@ -222,3 +233,10 @@
 
 ;;test for exercise3.10
 (run "let x = 4 in list(x,-(x,1),-(x,3))")
+
+;;test for exercise3.12
+(run "cond { zero?(1) ==> 1
+             greater?(2,3) ==> 2
+             less?(3,1) ==> 3
+             null?(emptylist) ==> 4
+             greater?(3,1) ==> 5 } end ")
