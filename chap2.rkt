@@ -25,6 +25,12 @@
           (else
            report-invalid-env env))))
 
+(define environment?
+  (lambda (env)
+    (and (pair? env)
+         (or (eqv? 'empty-env  (car env))
+             (eqv? 'extend-env (car env))))))
+
 
 (define report-no-binding-found
   (lambda (search-var)
@@ -34,7 +40,7 @@
   (lambda (env)
     (eopl:error 'apply-env "Bad environments ~s" env)))
 
-(provide empty-env extend-env apply-env)
+(provide empty-env extend-env apply-env environment?)
 
 ;;;section2.2.3
 (define empty-env-p
