@@ -31,6 +31,8 @@
   (cond-exp (preds (list-of boolexpression?)) (consequences (list-of expression?)))
   (print-exp (exp expression?))
   (unpack-exp (vars (list-of identifier?)) (exp1 expression?) (body expression?))
+  (proc-exp (var identifier?) (body expression?))
+  (call-exp (rator expression?) (rand expression?))
   )
 
 (define-datatype boolexpression boolexpression?
@@ -45,7 +47,8 @@
 (define-datatype expval expval?
   (num-val (num number?))
   (bool-val (bool boolean?))
-  (list-val (list (list-of expval?))))
+  (list-val (list (list-of expval?)))
+  (proc-val (proc proc?)))
 
 
 (define expval->num
@@ -65,6 +68,12 @@
     (cases expval val
       (list-val (list) list)
       (else (eopl:error 'expval->list "not a list value.~s" val)))))
+
+(define expval->proc
+  (lambda (val)
+    (cases expval val
+      (proc-val (proc) proc)
+      (else (eopl:error 'expval->proc "not a proc value.~s" val)))))
  
 
 ;;setup the init environment
@@ -203,7 +212,12 @@
                                         (extend-multivars-env (cdr vars) (cdr vals) env)))))
                     (if (not (eqv? (length vars) (length vals)))
                         (eopl:error 'unpack-exp "number of vars do not match the list element length in expression:~s" exp)
-                        (value-of body (extend-multivars-env vars vals env))))))))
+                        (value-of body (extend-multivars-env vars vals env)))))
+      (proc-exp (var body)
+                (proc-val (procedure var body env)))
+      (call-exp (rator rand)
+                (apply-procedure (expval->proc (value-of rator env)) (value-of rand env)))
+      )))
 
 ;; lexical spec
 
@@ -236,6 +250,8 @@
     (expression ("cond" "{" (arbno boolexpression "==>" expression) "}" "end") cond-exp)
     (expression ("print" "(" expression ")") print-exp)
     (expression ("unpack" (arbno identifier) "=" expression "in" expression) unpack-exp)
+    (expression ("proc" "(" identifier ")" expression) proc-exp)
+    (expression ("(" expression expression ")") call-exp)
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
     (boolexpression ("zero?" "(" expression ")") zero?-bool-exp)
@@ -322,3 +338,26 @@
 
 
 
+;;begin of section3.3
+(display "begin of section3.3 the PROC Language")
+(newline)
+
+(define-datatype proc proc?
+  (procedure (var identifier?)
+             (body expression?)
+             (saved-env environment?)))
+
+(define apply-procedure
+  (lambda (proc1 arg)
+    (cases proc proc1
+      (procedure (var body saved-env)
+                 (value-of body (extend-env var arg saved-env))))))
+
+;;test for basiec PROC Language
+(run "let f = proc(x) -(x,1) in (f (f 77))")
+(run "let x = 200
+      in let f = proc (z) -(z,x)
+         in let x = 100
+            in let g = proc (z) -(z,x)
+               in -((f 1), (g 1))")
+      
