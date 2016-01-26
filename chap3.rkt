@@ -366,3 +366,6 @@
                in -((f 1), (g 1))")
 
 (run "letproc f (x) -(x,1) in (f (f 77))")
+
+;;exercise 3.20
+(run "let f = proc (x) proc (y) +(x,y) in ((f 3) 4)")
