@@ -27,6 +27,8 @@
                       #t
                   (has-binding? search-var saved-env))))))
 
+(provide environment?)
+
 ;;exercise2.23
 (define identifier?
   (lambda (id)
