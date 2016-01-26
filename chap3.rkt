@@ -33,6 +33,7 @@
   (unpack-exp (vars (list-of identifier?)) (exp1 expression?) (body expression?))
   (proc-exp (var identifier?) (body expression?))
   (call-exp (rator expression?) (rand expression?))
+  (letproc-exp (proc-name identifier?) (var identifier?) (proc-body expression?) (body expression?))
   )
 
 (define-datatype boolexpression boolexpression?
@@ -217,6 +218,8 @@
                 (proc-val (procedure var body env)))
       (call-exp (rator rand)
                 (apply-procedure (expval->proc (value-of rator env)) (value-of rand env)))
+      (letproc-exp (proc-name var proc-body body)
+                   (value-of body (extend-env proc-name (proc-val (procedure var proc-body env)) env)))
       )))
 
 ;; lexical spec
@@ -252,6 +255,7 @@
     (expression ("unpack" (arbno identifier) "=" expression "in" expression) unpack-exp)
     (expression ("proc" "(" identifier ")" expression) proc-exp)
     (expression ("(" expression expression ")") call-exp)
+    (expression ("letproc" identifier "(" identifier ")" expression "in" expression) letproc-exp)
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
     (boolexpression ("zero?" "(" expression ")") zero?-bool-exp)
@@ -360,4 +364,5 @@
          in let x = 100
             in let g = proc (z) -(z,x)
                in -((f 1), (g 1))")
-      
+
+(run "letproc f (x) -(x,1) in (f (f 77))")
