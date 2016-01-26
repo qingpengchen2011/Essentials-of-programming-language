@@ -30,6 +30,7 @@
   (list-exp (exps (list-of expression?)))
   (cond-exp (preds (list-of boolexpression?)) (consequences (list-of expression?)))
   (print-exp (exp expression?))
+  (unpack-exp (vars (list-of identifier?)) (exp1 expression?) (body expression?))
   )
 
 (define-datatype boolexpression boolexpression?
@@ -190,7 +191,19 @@
       (cond-exp (preds consequences)
                 (evaluate-cond-exp preds consequences env))
       (print-exp (exp)
-                 (begin (eopl:printf "~s" (value-of exp env)) (num-val 1))))))
+                 (begin (eopl:printf "~s" (value-of exp env)) (num-val 1)))
+      (unpack-exp (vars exp1 body)
+                  (let ((vals (expval->list (value-of exp1 env))))
+                    (define extend-multivars-env
+                      (lambda (vars vals env)
+                        (if (null? vars)
+                            env
+                            (extend-env (car vars)
+                                        (car vals)
+                                        (extend-multivars-env (cdr vars) (cdr vals) env)))))
+                    (if (not (eqv? (length vars) (length vals)))
+                        (eopl:error 'unpack-exp "number of vars do not match the list element length in expression:~s" exp)
+                        (value-of body (extend-multivars-env vars vals env))))))))
 
 ;; lexical spec
 
@@ -222,7 +235,8 @@
     (expression ("list" "(" (separated-list expression ",") ")") list-exp)
     (expression ("cond" "{" (arbno boolexpression "==>" expression) "}" "end") cond-exp)
     (expression ("print" "(" expression ")") print-exp)
-
+    (expression ("unpack" (arbno identifier) "=" expression "in" expression) unpack-exp)
+    
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
     (boolexpression ("zero?" "(" expression ")") zero?-bool-exp)
     (boolexpression ("greater?" "(" expression "," expression ")") greater?-bool-exp)
@@ -298,6 +312,13 @@
 ;;test for exercise 3.17
 (run "let x = 30 in let* x= -(x,1) y = -(x,2) in -(x,y)")
 (run "let x = 30 in let* a = let x = -(x,1) y = -(x,2) in -(x,y) b = 2 in -(a,b)")
+
+
+;;test for exercise3.18
+(run "let u = 7 in unpack x y = cons(u,cons(3,emptylist)) in -(x,y)")
+
+;;;error exercise
+;(run "let u = 7 in unpack x y z = cons(u,cons(3,emptylist)) in -(x,y)")
 
 
 
