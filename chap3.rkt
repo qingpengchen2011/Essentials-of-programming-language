@@ -31,9 +31,9 @@
   (cond-exp (preds (list-of boolexpression?)) (consequences (list-of expression?)))
   (print-exp (exp expression?))
   (unpack-exp (vars (list-of identifier?)) (exp1 expression?) (body expression?))
-  (proc-exp (var identifier?) (body expression?))
-  (call-exp (rator expression?) (rand expression?))
-  (letproc-exp (proc-name identifier?) (var identifier?) (proc-body expression?) (body expression?))
+  (proc-exp (vars (list-of identifier?)) (body expression?))
+  (call-exp (rator expression?) (rands (list-of expression?)))
+  (letproc-exp (proc-name identifier?) (vars (list-of identifier?)) (proc-body expression?) (body expression?))
   )
 
 (define-datatype boolexpression boolexpression?
@@ -154,6 +154,13 @@
                                body-exp
                                (extend-env (car vars) (value-of (car exps) env) env)))))
 
+    (define evaluate-call-exp-rands
+      (lambda (rands env)
+        (if (null? rands)
+            '()
+            (cons (value-of (car rands) env)
+                  (evaluate-call-exp-rands (cdr rands) env)))))
+
     (cases expression exp
       (const-exp (num) (num-val num))
       (minus-exp (exp) (num-val (- 0 (expval->num (value-of exp env)))))
@@ -204,23 +211,25 @@
                  (begin (eopl:printf "~s" (value-of exp env)) (num-val 1)))
       (unpack-exp (vars exp1 body)
                   (let ((vals (expval->list (value-of exp1 env))))
-                    (define extend-multivars-env
+                    (if (not (eqv? (length vars) (length vals)))
+                        (eopl:error 'unpack-exp "number of vars do not match the list element length in expression:~s" exp)
+                        (value-of body (extend-multivars-env vars vals env)))))
+      (proc-exp (vars body)
+                (proc-val (procedure vars body env)))
+      (call-exp (rator rands)
+                (apply-procedure (expval->proc (value-of rator env)) (evaluate-call-exp-rands rands env)))
+      (letproc-exp (proc-name vars proc-body body)
+                   (value-of body (extend-env proc-name (proc-val (procedure vars proc-body env)) env)))
+      )))
+
+;; some helper procedures
+(define extend-multivars-env
                       (lambda (vars vals env)
                         (if (null? vars)
                             env
                             (extend-env (car vars)
                                         (car vals)
                                         (extend-multivars-env (cdr vars) (cdr vals) env)))))
-                    (if (not (eqv? (length vars) (length vals)))
-                        (eopl:error 'unpack-exp "number of vars do not match the list element length in expression:~s" exp)
-                        (value-of body (extend-multivars-env vars vals env)))))
-      (proc-exp (var body)
-                (proc-val (procedure var body env)))
-      (call-exp (rator rand)
-                (apply-procedure (expval->proc (value-of rator env)) (value-of rand env)))
-      (letproc-exp (proc-name var proc-body body)
-                   (value-of body (extend-env proc-name (proc-val (procedure var proc-body env)) env)))
-      )))
 
 ;; lexical spec
 
@@ -253,9 +262,9 @@
     (expression ("cond" "{" (arbno boolexpression "==>" expression) "}" "end") cond-exp)
     (expression ("print" "(" expression ")") print-exp)
     (expression ("unpack" (arbno identifier) "=" expression "in" expression) unpack-exp)
-    (expression ("proc" "(" identifier ")" expression) proc-exp)
-    (expression ("(" expression expression ")") call-exp)
-    (expression ("letproc" identifier "(" identifier ")" expression "in" expression) letproc-exp)
+    (expression ("proc" "(" (separated-list identifier ",") ")" expression) proc-exp)
+    (expression ("(" expression (arbno expression) ")") call-exp)
+    (expression ("letproc" identifier "(" (separated-list identifier ",") ")" expression "in" expression) letproc-exp)
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
     (boolexpression ("zero?" "(" expression ")") zero?-bool-exp)
@@ -347,15 +356,15 @@
 (newline)
 
 (define-datatype proc proc?
-  (procedure (var identifier?)
+  (procedure (vars (list-of identifier?))
              (body expression?)
              (saved-env environment?)))
 
 (define apply-procedure
-  (lambda (proc1 arg)
+  (lambda (proc1 args)
     (cases proc proc1
-      (procedure (var body saved-env)
-                 (value-of body (extend-env var arg saved-env))))))
+      (procedure (vars body saved-env)
+                 (value-of body (extend-multivars-env vars args saved-env))))))
 
 ;;test for basiec PROC Language
 (run "let f = proc(x) -(x,1) in (f (f 77))")
@@ -369,3 +378,10 @@
 
 ;;exercise 3.20
 (run "let f = proc (x) proc (y) +(x,y) in ((f 3) 4)")
+
+
+;;test for exercise 3.21
+(run "let f = proc (x,y,z) proc (u) +(u,+(x,+(y,z))) in
+((f 1 2 3) 4)")
+
+(run "letproc f (x,y,z) +(x,+(y,z)) in (f 1 2 3)")
