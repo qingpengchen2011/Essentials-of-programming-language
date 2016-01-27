@@ -385,3 +385,31 @@
 ((f 1 2 3) 4)")
 
 (run "letproc f (x,y,z) +(x,+(y,z)) in (f 1 2 3)")
+
+;;exercise3.23
+(run "let makemult = proc (maker) proc (x)
+if zero?(x)
+then 0
+else -(((maker maker) -(x,1)), minus(4))
+in let timesfour = proc (x) ((makemult makemult) x) in (timesfour 3)")
+
+(display (run "let makemultn = proc (n)
+             proc(maker) proc (x)
+              if zero?(x)
+                 then 0
+                 else +(((maker maker) -(x,1)), n)
+      in let timesn = proc (n)
+                      let f = (makemultn n) in
+                      proc (x) 
+                          ((f f) x) in
+                             let fact = proc (n , factfunc)
+                                 if zero?(n)
+                                    then 1
+                                    else ((timesn (factfunc -(n,1) factfunc)) n)
+                               in (fact 10 fact)"))
+                             
+(define fact
+  (lambda (n)
+    (if (zero? n)
+        1
+        (* n (fact (- n 1))))))
