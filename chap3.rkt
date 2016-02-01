@@ -413,3 +413,7 @@ in let timesfour = proc (x) ((makemult makemult) x) in (timesfour 3)")
     (if (zero? n)
         1
         (* n (fact (- n 1))))))
+
+;;; the trick Currying is used to support multiple params func.
+;;; if we do not support multiple params func in our language grammer we can use Currying to achieve the same effect.
+
