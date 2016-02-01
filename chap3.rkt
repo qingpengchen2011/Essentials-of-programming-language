@@ -454,3 +454,9 @@ in let timesfour = proc (x) ((makemult makemult) x) in (timesfour 3)")
       in let p = dynamicproc (x) -(x,a)
 a=5
 in -(a,(p 2))")
+
+(run "let a = 3
+      in let p = dynamicproc (z) a
+         in let f = dynamicproc (x) (p 0)
+            in let a = 5
+in (f 2)")
