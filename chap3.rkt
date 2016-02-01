@@ -35,6 +35,7 @@
   (call-exp (rator expression?) (rands (list-of expression?)))
   (letproc-exp (proc-name identifier?) (vars (list-of identifier?)) (proc-body expression?) (body expression?))
   (traceproc-exp (vars (list-of identifier?)) (body expression?))
+  (dynamic-binding-proc-exp (vars (list-of identifier?)) (body expression?))
   )
 
 (define-datatype boolexpression boolexpression?
@@ -218,11 +219,13 @@
       (proc-exp (vars body)
                 (proc-val (procedure vars body env)))
       (call-exp (rator rands)
-                (apply-procedure (expval->proc (value-of rator env)) (evaluate-call-exp-rands rands env)))
+                (apply-procedure (expval->proc (value-of rator env)) (evaluate-call-exp-rands rands env) env))
       (letproc-exp (proc-name vars proc-body body)
                    (value-of body (extend-env proc-name (proc-val (procedure vars proc-body env)) env)))
       (traceproc-exp (vars body)
                      (proc-val (trace-procedure vars body env)))
+      (dynamic-binding-proc-exp (vars body)
+                                (proc-val (dynamic-binding-procedure vars body)))
       )))
 
 ;; some helper procedures
@@ -269,6 +272,8 @@
     (expression ("(" expression (arbno expression) ")") call-exp)
     (expression ("letproc" identifier "(" (separated-list identifier ",") ")" expression "in" expression) letproc-exp)
     (expression ("traceproc" "(" (separated-list identifier ",") ")" expression) traceproc-exp)
+    (expression ("dynamicproc" "(" (separated-list identifier ",") ")" expression) dynamic-binding-proc-exp)
+
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
     (boolexpression ("zero?" "(" expression ")") zero?-bool-exp)
@@ -365,13 +370,20 @@
              (saved-env environment?))
   (trace-procedure (vars (list-of identifier?))
                    (body expression?)
-                   (saved-env environment?)))
+                   (saved-env environment?))
+  (dynamic-binding-procedure (vars (list-of identifier?))
+                             (body expression?))
+  )
+
+
 
 (define apply-procedure
-  (lambda (proc1 args)
+  (lambda (proc1 args env)
     (cases proc proc1
       (procedure (vars body saved-env)
                  (value-of body (extend-multivars-env vars args saved-env)))
+      (dynamic-binding-procedure (vars body)
+                 (value-of body (extend-multivars-env vars args env))) ;;dynamic binding, evaluate the body with current environment.
       (trace-procedure (vars body saved-env)
                        (begin (eopl:printf "entering func")
                               (newline)
@@ -438,3 +450,7 @@ in let timesfour = proc (x) ((makemult makemult) x) in (timesfour 3)")
  (f 2 g)")
 
     
+(run " let a = 3
+      in let p = dynamicproc (x) -(x,a)
+a=5
+in -(a,(p 2))")
