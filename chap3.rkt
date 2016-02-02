@@ -511,3 +511,22 @@ in (f 2)")
 even(x) = if zero?(x) then 1 else (odd -(x,1))
 odd(x) = if zero?(x) then 0 else (even -(x,1))
 in (odd 12)")
+
+;;exercise 3.37
+;;for test
+(run "let fact = proc (n) +(n,1) in let fact = proc (n)
+                          if zero?(n)
+                          then 1
+                          else *(n,(fact -(n,1)))
+in (fact 5)")
+
+(run "let fact = dynamicproc (n) +(n,1) in let fact = dynamicproc (n)
+                          if zero?(n)
+                          then 1
+                          else *(n,(fact -(n,1)))
+in (fact 6)")
+;;implement 3.37
+(run
+ " let even = dynamicproc(x) if zero?(x) then 1 else (odd -(x,1))
+    in let odd = dynamicproc(x) if zero?(x) then 0 else (even -(x,1))
+       in (odd 13)")
