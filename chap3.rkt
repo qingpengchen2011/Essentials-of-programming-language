@@ -11,25 +11,33 @@
    (var identifier?)
    (val expval?)
    (env environment?))
+
   (extend-env-rec
-   (p-name identifier?)
-   (bound-vars (list-of identifier?))
-   (p-body expression?)
+   (p-names (list-of identifier?))
+   (procs-vars (list-of (list-of identifier?)))
+   (p-bodys (list-of expression?))
    (env environment?))
   )
 
 (define apply-env
   (lambda (env search-var)
+     (define apply-env-mutually-rec
+        (lambda (search-var p-names procs-vars p-bodys saved-env env)
+          (if (null? p-names)
+              (apply-env env search-var)
+              (if (eqv? (car p-names) search-var)
+                  (proc-val (procedure (car procs-vars) (car p-bodys) env))
+                  (apply-env-mutually-rec search-var (cdr p-names) (cdr procs-vars) (cdr p-bodys) saved-env env)))))
     (cases environment env
       (empty-env () report-no-binding-found search-var)
       (extend-env (var val saved-env)
                   (if (eqv? var search-var)
                       val
                       (apply-env saved-env search-var)))
-      (extend-env-rec (p-name bound-vars p-body saved-env)
-                      (if (eqv? p-name search-var)
-                          (proc-val (procedure bound-vars p-body env))
-                          (apply-env saved-env search-var))))))
+    
+      (extend-env-rec (p-names procs-vars p-bodys saved-env)
+                               (apply-env-mutually-rec search-var p-names procs-vars p-bodys saved-env env))
+      )))
 
 ;;section3.2 LET: A Simple Language
 
@@ -61,7 +69,7 @@
   (letproc-exp (proc-name identifier?) (vars (list-of identifier?)) (proc-body expression?) (body expression?))
   (traceproc-exp (vars (list-of identifier?)) (body expression?))
   (dynamic-binding-proc-exp (vars (list-of identifier?)) (body expression?))
-  (letrec-exp (proc-name identifier?) (vars (list-of identifier?)) (proc-body expression?) (letrec-body expression?))
+  (letrec-exp (proc-names (list-of identifier?)) (procs-vars (list-of (list-of identifier?))) (proc-bodys (list-of expression?)) (letrec-body expression?))
   )
 
 (define-datatype boolexpression boolexpression?
@@ -252,8 +260,8 @@
                      (proc-val (trace-procedure vars body env)))
       (dynamic-binding-proc-exp (vars body)
                                 (proc-val (dynamic-binding-procedure vars body)))
-      (letrec-exp (p-name bound-vars p-body letrec-body)
-                  (value-of letrec-body (extend-env-rec p-name bound-vars p-body env)))
+      (letrec-exp (p-names procs-vars p-bodys letrec-body)
+                  (value-of letrec-body (extend-env-rec p-names procs-vars p-bodys env)))
       )))
 
 ;; some helper procedures
@@ -301,7 +309,7 @@
     (expression ("letproc" identifier "(" (separated-list identifier ",") ")" expression "in" expression) letproc-exp)
     (expression ("traceproc" "(" (separated-list identifier ",") ")" expression) traceproc-exp)
     (expression ("dynamicproc" "(" (separated-list identifier ",") ")" expression) dynamic-binding-proc-exp)
-    (expression ("letrec" identifier "(" (separated-list identifier ",") ")" "=" expression "in" expression) letrec-exp)
+    (expression ("letrec" (arbno identifier "(" (separated-list identifier ",") ")" "=" expression) "in" expression) letrec-exp)
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
     (boolexpression ("zero?" "(" expression ")") zero?-bool-exp)
@@ -497,4 +505,9 @@ in (f 2)")
 ;;test for exercise3.31
 (run "letrec double(x,y) = if zero?(x) then 0 else +(y,+((double -(x,1) y), 2)) in (double 6 2)")
 
-    
+
+;;test for exercise 3.32/3.33
+(run "letrec
+even(x) = if zero?(x) then 1 else (odd -(x,1))
+odd(x) = if zero?(x) then 0 else (even -(x,1))
+in (odd 12)")
