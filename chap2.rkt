@@ -40,7 +40,7 @@
   (lambda (env)
     (eopl:error 'apply-env "Bad environments ~s" env)))
 
-(provide empty-env extend-env apply-env environment?)
+(provide report-no-binding-found)
 
 ;;;section2.2.3
 (define empty-env-p

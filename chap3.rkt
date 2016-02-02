@@ -1,10 +1,35 @@
 #lang eopl
 
-
-(require  "./chap2.rkt")
+(require "./chap2.rkt")
 (require  "./chap2-from-section2.4-to-end.rkt")
 
+;;;redefine environment for section3.4 LETREC Language
 
+(define-datatype environment environment?
+  (empty-env)
+  (extend-env
+   (var identifier?)
+   (val expval?)
+   (env environment?))
+  (extend-env-rec
+   (p-name identifier?)
+   (bound-vars (list-of identifier?))
+   (p-body expression?)
+   (env environment?))
+  )
+
+(define apply-env
+  (lambda (env search-var)
+    (cases environment env
+      (empty-env () report-no-binding-found search-var)
+      (extend-env (var val saved-env)
+                  (if (eqv? var search-var)
+                      val
+                      (apply-env saved-env search-var)))
+      (extend-env-rec (p-name bound-vars p-body saved-env)
+                      (if (eqv? p-name search-var)
+                          (proc-val (procedure bound-vars p-body env))
+                          (apply-env saved-env search-var))))))
 
 ;;section3.2 LET: A Simple Language
 
@@ -36,6 +61,7 @@
   (letproc-exp (proc-name identifier?) (vars (list-of identifier?)) (proc-body expression?) (body expression?))
   (traceproc-exp (vars (list-of identifier?)) (body expression?))
   (dynamic-binding-proc-exp (vars (list-of identifier?)) (body expression?))
+  (letrec-exp (proc-name identifier?) (vars (list-of identifier?)) (proc-body expression?) (letrec-body expression?))
   )
 
 (define-datatype boolexpression boolexpression?
@@ -226,6 +252,8 @@
                      (proc-val (trace-procedure vars body env)))
       (dynamic-binding-proc-exp (vars body)
                                 (proc-val (dynamic-binding-procedure vars body)))
+      (letrec-exp (p-name bound-vars p-body letrec-body)
+                  (value-of letrec-body (extend-env-rec p-name bound-vars p-body env)))
       )))
 
 ;; some helper procedures
@@ -273,7 +301,7 @@
     (expression ("letproc" identifier "(" (separated-list identifier ",") ")" expression "in" expression) letproc-exp)
     (expression ("traceproc" "(" (separated-list identifier ",") ")" expression) traceproc-exp)
     (expression ("dynamicproc" "(" (separated-list identifier ",") ")" expression) dynamic-binding-proc-exp)
-
+    (expression ("letrec" identifier "(" (separated-list identifier ",") ")" "=" expression "in" expression) letrec-exp)
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
     (boolexpression ("zero?" "(" expression ")") zero?-bool-exp)
@@ -460,3 +488,9 @@ in -(a,(p 2))")
          in let f = dynamicproc (x) (p 0)
             in let a = 5
 in (f 2)")
+
+;;;section3.4 LETREC Language
+
+                 
+(run "letrec double(x) = if zero?(x) then 0 else +((double -(x,1)), 2) in (double 6)")
+    
