@@ -493,4 +493,8 @@ in (f 2)")
 
                  
 (run "letrec double(x) = if zero?(x) then 0 else +((double -(x,1)), 2) in (double 6)")
+
+;;test for exercise3.31
+(run "letrec double(x,y) = if zero?(x) then 0 else +(y,+((double -(x,1) y), 2)) in (double 6 2)")
+
     
