@@ -70,6 +70,18 @@
   (traceproc-exp (vars (list-of identifier?)) (body expression?))
   (dynamic-binding-proc-exp (vars (list-of identifier?)) (body expression?))
   (letrec-exp (proc-names (list-of identifier?)) (procs-vars (list-of (list-of identifier?))) (proc-bodys (list-of expression?)) (letrec-body expression?))
+
+  ;;used for lexical addressing
+  (nameless-var-exp (index integer?))
+  (nameless-let-exp (exps (list-of expression?)) (body expression?))
+  (nameless-let*-exp (exps (list-of expression?)) (body expression?))
+  (nameless-proc-exp (body expression?))
+  (nameless-unpack-exp (exp expression?) (body expression?))
+  (nameless-letproc-exp (proc-body expression?) (body expression?))
+  (namelesss-traceproc-exp (body expression?))
+  
+  
+
   )
 
 (define-datatype boolexpression boolexpression?
@@ -262,6 +274,10 @@
                                 (proc-val (dynamic-binding-procedure vars body)))
       (letrec-exp (p-names procs-vars p-bodys letrec-body)
                   (value-of letrec-body (extend-env-rec p-names procs-vars p-bodys env)))
+      ;;lexical addressing; any occurence of the nameless expression we'll report an error
+      (else
+       (eopl:error 'value-of "occurence of nameless exp:~s" exp))
+
       )))
 
 ;; some helper procedures
@@ -530,3 +546,153 @@ in (fact 6)")
  " let even = dynamicproc(x) if zero?(x) then 1 else (odd -(x,1))
     in let odd = dynamicproc(x) if zero?(x) then 0 else (even -(x,1))
        in (odd 13)")
+
+
+;;;section3.7
+(define empty-senv
+  (lambda ()
+    '()))
+
+(define extend-senv
+  (lambda (var senv)
+    (cons var senv)))
+
+(define apply-senv
+  (lambda (senv search-var)
+    (cond ((null? senv) (report-no-binding-found search-var))
+          ((eqv? search-var (car senv)) 0)
+          (else (+ 1 (apply-senv (cdr senv) search-var))))))
+
+(define init-senv
+  (lambda ()
+    (extend-senv 'i
+                 (extend-senv 'v
+                              (extend-senv 'x
+                                           (empty-senv))))))
+
+(define translation-of-bool-exp
+  (lambda (bexp senv)
+    (cases boolexpression bexp
+      (equal?-bool-exp (exp1 exp2)
+                       (equal?-bool-exp (translation-of exp1 senv) (translation-of exp2 senv)))
+      (greater?-bool-exp (exp1 exp2)
+                         (greater?-bool-exp (translation-of exp1 senv) (translation-of exp2 senv)))
+      (less?-bool-exp (exp1 exp2)
+                      (less?-bool-exp (translation-of exp1 senv) (translation-of exp2 senv)))
+      (zero?-bool-exp (exp)
+                      (zero?-bool-exp (translation-of exp senv)))
+      (null?-bool-exp (exp)
+                      (null?-bool-exp (translation-of exp senv))))))
+
+
+(define translation-of
+  (lambda (inexp senv)
+
+    (define translation-of-let
+      (lambda (exps senv)
+        (if (null? exps)
+            '()
+            (cons (translation-of (car exps) senv)
+                  (translation-of-let (cdr exps) senv)))))
+
+    (define extend-multivars-senv
+      (lambda (vars senv)
+        (if (null? vars)
+            senv
+            (cons (car vars)
+                  (extend-multivars-senv (cdr vars) senv)))))
+
+    (define translation-of-let*
+      (lambda (vars exps senv)
+        (cond ((null? exps) '())
+              ((null? (cdr exps)) (list (translation-of (car exps) senv)))
+              (else (cons (translation-of (car exps) senv)
+                         (translation-of-let* (cdr vars) (cdr exps) (extend-senv (car vars) senv)))))))
+
+    (define translation-of-exps
+      (lambda (exps senv)
+        (if (null? exps)
+            '()
+            (cons (translation-of (car exps) senv)
+                  (translation-of-exps (cdr exps) senv)))))
+
+    (define translation-of-boolexps
+      (lambda (bexps senv)
+        (if (null? bexps)
+            '()
+            (cons (translation-of-bool-exp (car bexps) senv)
+                  (translation-of-boolexps (cdr bexps) senv)))))
+    
+    (cases expression inexp
+      (const-exp (num) (const-exp num))
+      (minus-exp (exp) (minus-exp (translation-of exp senv)))
+      (diff-exp (exp1 exp2) (diff-exp (translation-of exp1 senv) (translation-of exp2 senv)))
+      (add-exp (exp1 exp2) (add-exp (translation-of exp1 senv) (translation-of exp2 senv)))
+      (multiply-exp (exp1 exp2) (multiply-exp (translation-of exp1 senv) (translation-of exp2 senv)))
+      (quotient-exp (exp1 exp2) (quotient-exp (translation-of exp1 senv) (translation-of exp2 senv)))
+      (bool-exp (bexp) (bool-exp (translation-of-bool-exp bexp senv)))
+      (if-bool-exp (bexp exp1 exp2) (if-bool-exp (bool-exp (translation-of-bool-exp bexp senv))
+                                                 (translation-of exp1 senv)
+                                                 (translation-of exp2 senv)))
+      (var-exp (var) (nameless-var-exp (apply-senv senv var)))
+      (let-exp (vars exps body) (nameless-let-exp (translation-of-let exps senv)
+                                                  (translation-of body (extend-multivars-senv vars senv))))
+      (let*-exp (vars exps body)
+                (nameless-let*-exp (translation-of-let* vars exps senv)
+                                   (translation-of body (extend-multivars-senv vars senv))))
+      (emptylist-exp () (emptylist-exp))
+      (cons-exp (exp1 exp2) (cons-exp (translation-of exp1 senv) (translation-of exp2 senv)))
+      (car-exp (exp) (car-exp (translation-of exp senv)))
+      (cdr-exp (exp) (cdr-exp (translation-of exp senv)))
+      (list-exp (exps) (list-exp (translation-of-exps exps senv)))
+      (cond-exp (boolexps consequence-exps)
+                (cond-exp (translation-of-boolexps boolexps senv)
+                          (translation-of-exps consequence-exps senv)))
+      (print-exp (exp)
+                 (print-exp (translation-of exp senv)))
+      (unpack-exp (vars exp1 body)
+                  (nameless-unpack-exp (translation-of exp1 senv)
+                                       (translation-of body (extend-multivars-senv vars senv))))
+      (proc-exp (vars body)
+                (nameless-proc-exp (translation-of body (extend-multivars-senv vars senv))))
+      (call-exp (rator rands)
+                (call-exp (translation-of rator senv)
+                          (translation-of-exps rands senv)))
+      (letproc-exp (proc-name vars proc-body body)
+                   (nameless-letproc-exp (translation-of proc-body (extend-multivars-senv vars senv))
+                                         (translation-of body (extend-senv proc-name senv))))
+      ;;we are not able to process dynamic-binding-proc-exp,skip
+      (dynamic-binding-proc-exp (vars body)
+                                (eopl:error 'translation-of "dynamic-binding-proc-exp is not usable for lexical addressing"))
+      (letrec-exp (proc-names procs-vars proc-bodys letrec-body)
+                  (begin (eopl:printf "letrec-exp will be handled soon!")
+                         exp))
+      ;;skip for nameless exp
+      (else
+       (eopl:error 'translation-of "meets nameless exp"))
+
+      )))
+
+
+(define translation-of-program
+  (lambda (pgm)
+    (cases program pgm
+      (a-program (exp)
+                 (a-program (translation-of exp (init-senv)))))))
+
+(define run-translation
+  (lambda (string)
+    (translation-of-program (scan&parse string))))
+
+;;test for example from book
+(run-translation "let x=37 in proc(y) let z=-(y,x) in -(x,y)")
+
+
+      
+
+      
+      
+      
+      
+  
+          
