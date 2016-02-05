@@ -2,6 +2,7 @@
 
 (require "./chap2.rkt")
 (require  "./chap2-from-section2.4-to-end.rkt")
+(require rackunit)
 
 ;;;redefine environment for section3.4 LETREC Language
 
@@ -53,7 +54,7 @@
   (multiply-exp (exp1 expression?) (exp2 expression?))
   (quotient-exp (exp1 expression?) (exp2 expression?))
   (bool-exp (exp1 boolexpression?))
-  (if-bool-exp (exp1 boolexpression?) (exp2 expression?) (exp3 expression?))
+  (if-bool-exp (bexp boolexpression?) (exp2 expression?) (exp3 expression?))
   (var-exp (var identifier?))
   (let-exp (vars (list-of identifier?)) (exps (list-of expression?)) (body expression?))
   (let*-exp (vars (list-of identifier?)) (exps (list-of expression?)) (body expression?))
@@ -645,15 +646,16 @@ in (fact 6)")
       (multiply-exp (exp1 exp2) (multiply-exp (translation-of exp1 senv) (translation-of exp2 senv)))
       (quotient-exp (exp1 exp2) (quotient-exp (translation-of exp1 senv) (translation-of exp2 senv)))
       (bool-exp (bexp) (bool-exp (translation-of-bool-exp bexp senv)))
-      (if-bool-exp (bexp exp1 exp2) (if-bool-exp (bool-exp (translation-of-bool-exp bexp senv))
-                                                 (translation-of exp1 senv)
-                                                 (translation-of exp2 senv)))
+      (if-bool-exp (bexp exp1 exp2)
+                   (if-bool-exp (translation-of-bool-exp bexp senv)
+                                (translation-of exp1 senv)
+                                (translation-of exp2 senv)))
       (var-exp (var) (nameless-var-exp (apply-senv senv var)))
-      (let-exp (vars exps body) (nameless-let-exp (translation-of-let exps senv)
-                                                  (translation-of body (extend-multivars-senv vars senv))))
+      (let-exp (vars exps body) (nameless-let-exp (translation-of-let (reverse exps) senv)
+                                                  (translation-of body (extend-multivars-senv (reverse vars) senv))))
       (let*-exp (vars exps body)
                 (nameless-let*-exp (translation-of-let* vars exps senv)
-                                   (translation-of body (extend-multivars-senv vars senv))))
+                                   (translation-of body (extend-multivars-senv (reverse vars) senv))))
       (emptylist-exp () (emptylist-exp))
       (cons-exp (exp1 exp2) (cons-exp (translation-of exp1 senv) (translation-of exp2 senv)))
       (car-exp (exp) (car-exp (translation-of exp senv)))
@@ -853,7 +855,7 @@ in (fact 6)")
                 (nameless-value-of-bool-exp exp nameless-env))
               
       (nameless-let-exp (exps body)
-               (nameless-evaluate-let-exp exps body nameless-env nameless-env))
+               (nameless-evaluate-let-exp (reverse exps) body nameless-env nameless-env))
 
       (nameless-let*-exp (exps body)
                (nameless-evaluate-let*-exp exps body nameless-env))
@@ -916,7 +918,79 @@ in (fact 6)")
 
 (nameless-run testnp)
       
-      
-      
-  
-          
+
+;;;write some testcase for nameless interpreter
+
+(define testrun
+  (lambda (pgm-string msg)
+    (check-equal? (run pgm-string) (nameless-run pgm-string) msg)))
+
+(define test-minus  "minus(-(minus(5),9))")
+(testrun test-minus "test-minus fail")
+
+(define test-multi-op "+(//(13,4),*(minus(3), 2))")
+(testrun test-multi-op "test-multi-op fail")
+
+(define test-greater?-1 "greater?(//(13,4),minus(2))")
+(testrun test-greater?-1 "test-greater?-1 fail")
+
+(define test-greater?-2 "greater?(//(13,minus(4)),2)")
+(testrun test-greater?-2 "test-greater?-2 fail")
+
+(define test-less?-1 "less?(//(13,4),minus(2))")
+(testrun test-less?-1 "test-less?-1 fail")
+
+(define test-less?-2 "less?(//(13,minus(4)),2)")
+(testrun test-less?-2 "test-less?-2 fail")
+
+(define test-cons "let x = 4 in cons(x,cons(cons(-(x,1),emptylist),emptylist))")
+(testrun test-cons "test-cons fail")
+
+(define test-car "let y = let x = 4 in cons(x,cons(cons(-(x,1),emptylist),emptylist)) in car(y)")
+(testrun test-car "test-car fail")
+
+(define test-cdr "let y = let x = 4 in cons(x,cons(cons(-(x,1),emptylist),emptylist)) in cdr(y)")
+(testrun test-cdr "test-cdr fail")
+
+(define test-null?-1 "null?(cons(1,emptylist))")
+(testrun test-null?-1 "test-null?-1 fail")
+
+(define test-null?-2 "null?(emptylist)")
+(testrun test-null?-2 "test-null?-2 fail")
+
+(define test-list "let x = 4 in list(x,-(x,1),-(x,3))")
+(testrun test-list "test-list fail")
+
+(define test-cond "cond { zero?(1) ==> 1
+             greater?(2,3) ==> 2
+             less?(3,1) ==> 3
+             null?(emptylist) ==> 4
+             greater?(3,1) ==> 5 } end ")
+(testrun test-cond "test-cond fail")
+
+(define test-if "if equal?(1,1) then 1 else 2")
+(testrun test-if "test-if fail")
+
+(define test-print-cond "let a = 1 in print(let b = 1 in cond {
+                                    zero?(a) ==> 0
+                                    greater?(a,i) ==> 1
+                                    zero?(-(a,i)) ==> 2
+                                    } end )")
+(testrun test-print-cond "test-print-cond fail")
+
+(define test-let-1 "let x = 30 in let x = -(x,1) y = -(x,2) in -(x,y)")
+(testrun test-let-1 "test-let-1 fail")
+
+(define test-let-2 "let x = 30 in let a = let x = -(x,1) y = -(x,2) in -(x,y) b = 2 in -(a,b)")
+(testrun test-let-2 "test-let-2 fail")
+
+(define test-let*-1 "let x = 30 in let* x= -(x,1) y = -(x,2) in -(x,y)")
+(testrun test-let*-1 "test-let*-1 fail")
+
+(define test-let*-2 "let x = 30 in let* a = let x = -(x,1) y = -(x,2) in -(x,y) b = 2 in -(a,b)")
+(testrun test-let*-2 "test-let*-2 fail")
+
+(define test-unpack "let u = 7 in unpack x y = cons(u,cons(3,emptylist)) in -(x,y)")
+(testrun test-unpack "test-unpack fail")
+
+
