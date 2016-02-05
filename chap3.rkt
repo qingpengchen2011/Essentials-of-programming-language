@@ -993,4 +993,38 @@ in (fact 6)")
 (define test-unpack "let u = 7 in unpack x y = cons(u,cons(3,emptylist)) in -(x,y)")
 (testrun test-unpack "test-unpack fail")
 
+(define testproc-1 "let f = proc(x) -(x,1) in (f (f 77))")
+(testrun testproc-1 "test-proc1")
 
+(define testproc-2  "let x = 200
+      in let f = proc (z) -(z,x)
+         in let x = 100
+            in let g = proc (z) -(z,x)
+               in -((f 1), (g 1))")
+(testrun testproc-2 "test-proc2")
+
+(define testletproc "letproc f (x) -(x,1) in (f (f 77))")
+(testrun testletproc "testletproc fail")
+
+(define testproc-currying-1 "let f = proc (x) proc (y) +(x,y) in ((f 3) 4)")
+(testrun testproc-currying-1 "testproc-currying-1 fail")
+
+(define testproc-currying-2 "let f = proc (x,y,z) proc (u) +(u,+(x,+(y,z))) in
+((f 1 2 3) 4)")
+(testrun testproc-currying-2 "testproc-currying-2 fail")
+
+(define test-fact "let makemultn = proc (n)
+             proc(maker) proc (x)
+              if zero?(x)
+                 then 0
+                 else +(((maker maker) -(x,1)), n)
+      in let timesn = proc (n)
+                      let f = (makemultn n) in
+                      proc (x) 
+                          ((f f) x) in
+                             let fact = proc (n , factfunc)
+                                 if zero?(n)
+                                    then 1
+                                    else ((timesn (factfunc -(n,1) factfunc)) n)
+                               in (fact 10 fact)")
+(testrun test-fact "test-fact fail")
