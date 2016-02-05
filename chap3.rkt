@@ -44,6 +44,7 @@
 (define-datatype program program?
   (a-program (exp expression?)))
 
+
 (define-datatype expression expression?
   (const-exp (num number?))
   (minus-exp (exp expression?))
@@ -78,7 +79,7 @@
   (nameless-proc-exp (body expression?))
   (nameless-unpack-exp (exp expression?) (body expression?))
   (nameless-letproc-exp (proc-body expression?) (body expression?))
-  (namelesss-traceproc-exp (body expression?))
+  (nameless-traceproc-exp (body expression?))
   
   
 
@@ -97,7 +98,10 @@
   (num-val (num number?))
   (bool-val (bool boolean?))
   (list-val (list (list-of expval?)))
-  (proc-val (proc proc?)))
+  (proc-val (proc proc?))
+  ;;added for nameless interpreter
+  (nameless-proc-val (nameless-proc nameless-proc?))
+  )
 
 
 (define expval->num
@@ -123,6 +127,12 @@
     (cases expval val
       (proc-val (proc) proc)
       (else (eopl:error 'expval->proc "not a proc value.~s" val)))))
+
+(define expval->nameless-proc
+  (lambda (val)
+    (cases expval val
+      (nameless-proc-val (nameless-proc) nameless-proc)
+      (else (eopl:error 'expval->proc "not a nameless-proc value.~s" val)))))
  
 
 ;;setup the init environment
@@ -338,9 +348,13 @@
 (define scan&parse
     (sllgen:make-string-parser lexical-spec grammer-spec))
 
+(provide scan&parse)
+
 (define run
   (lambda (string)
     (value-of-program (scan&parse string))))
+
+(provide run)
 
 (define testp "let x = 1 in if zero?(-(x,i)) then 10 else 100")
 
@@ -680,17 +694,227 @@ in (fact 6)")
       (a-program (exp)
                  (a-program (translation-of exp (init-senv)))))))
 
+(provide translation-of-program)
+
 (define run-translation
   (lambda (string)
     (translation-of-program (scan&parse string))))
+
+(provide run-translation)
 
 ;;test for example from book
 (run-translation "let x=37 in proc(y) let z=-(y,x) in -(x,y)")
 
 
-      
 
+;;;The Nameless Interpreter
+(define nameless-environment?
+  (lambda (x)
+    ((list-of expval?) x)))
+
+(define empty-nameless-env
+  (lambda ()
+    '()))
+
+(define extend-nameless-env
+  (lambda (val nameless-env)
+    (cons val nameless-env)))
+
+(define extend-multivals-nameless-env
+  (lambda (vals nameless-env)
+    (if (null? vals)
+        nameless-env
+        (cons (car vals) (extend-multivals-nameless-env (cdr vals) nameless-env)))))
+
+(define apply-nameless-env
+  (lambda (nameless-env n)
+    (list-ref nameless-env n)))
+
+(define-datatype nameless-proc nameless-proc?
+  (nameless-procedure (body expression?)
+                      (saved-nameless-environment nameless-environment?))
+  (nameless-trace-procedure (body expression?)
+                      (saved-nameless-environment nameless-environment?))
+  )
+
+(define apply-nameless-procedure
+  (lambda (nameless-proc1 args)
+    (cases nameless-proc nameless-proc1
+      (nameless-procedure (body saved-nameless-env)
+                          (nameless-value-of body (extend-multivals-nameless-env args saved-nameless-env)))
+      (nameless-trace-procedure (body saved-nameless-env)
+                                 (begin (eopl:printf "nameless:entering func")
+                                 (newline)
+                                 (let ((r (nameless-value-of body (extend-multivals-nameless-env args saved-nameless-env))))
+                                    (begin (eopl:printf "nameless:exiting func")
+                                       (newline)
+                                       r))))
+                                
+      )))
+
+(define init-nameless-env
+  (lambda ()
+    (extend-nameless-env
+     (num-val 1)
+     (extend-nameless-env (num-val 5)
+                          (extend-nameless-env (num-val 10) (empty-nameless-env))))))
+
+(define nameless-value-of-bool-exp
+      (lambda (nameless-exp nameless-env)
+        (define compare-operation
+          (lambda (op exp1 exp2 nameless-env)
+            (let ((val1 (nameless-value-of exp1 nameless-env))
+                  (val2 (nameless-value-of exp2 nameless-env)))
+              (bool-val (op (expval->num val1) (expval->num val2))))))
+        (cases boolexpression nameless-exp
+          (equal?-bool-exp (exp1 exp2)
+                           (compare-operation eqv? exp1 exp2 nameless-env))
+          (greater?-bool-exp (exp1 exp2)
+                             (compare-operation > exp1 exp2 nameless-env))
+          (less?-bool-exp (exp1 exp2)
+                          (compare-operation < exp1 exp2 nameless-env))
+          (zero?-bool-exp (exp)
+                          (bool-val (zero? (expval->num (nameless-value-of exp nameless-env)))))
+          (null?-bool-exp (exp)
+                          (bool-val (null? (expval->list (nameless-value-of exp nameless-env))))))))
+
+(define nameless-value-of
+  (lambda (nameless-exp nameless-env)
+
+     (define arithmetic-operation
+      (lambda (op exp1 exp2 nameless-env)
+        (let ((val1 (nameless-value-of exp1 nameless-env))
+              (val2 (nameless-value-of exp2 nameless-env)))
+          (num-val (op (expval->num val1) (expval->num val2))))))
+
+     (define nameless-evaluate-let-exp
+      (lambda (exps body-exp argenv finalenv)
+        (if (null? exps)
+            (nameless-value-of body-exp finalenv)
+            (nameless-evaluate-let-exp
+                              (cdr exps)
+                              body-exp
+                              argenv
+                              (extend-nameless-env (nameless-value-of (car exps) argenv) finalenv)))))
+
+     (define nameless-evaluate-let*-exp
+      (lambda (exps body-exp env)
+        (if (null? exps)
+            (nameless-value-of body-exp env)
+            (nameless-evaluate-let*-exp
+                               (cdr exps)
+                               body-exp
+                               (extend-nameless-env (nameless-value-of (car exps) env) env)))))
+
+     (define nameless-evaluate-list-exp
+      (lambda (exps env)
+        (if (null? exps)
+            (list-val '())
+            (list-val (cons (nameless-value-of (car exps) env)
+                            (expval->list (nameless-evaluate-list-exp (cdr exps) env)))))))
+
+     (define nameless-evaluate-cond-exp
+      (lambda (preds cons env)
+        (if (null? preds)
+            (eopl:error 'value-of "none of the cond expression's test condition success")
+            (if (expval->bool (nameless-value-of-bool-exp (car preds) env))
+                (nameless-value-of (car cons) env)
+                (nameless-evaluate-cond-exp (cdr preds) (cdr cons) env)))))
+
+     (define evaluate-call-exp-rands
+      (lambda (rands env)
+        (if (null? rands)
+            '()
+            (cons (nameless-value-of (car rands) env)
+                  (evaluate-call-exp-rands (cdr rands) env)))))
+    
+    (cases expression nameless-exp
+      (const-exp (num) (num-val num))
+      (minus-exp (exp) (num-val (- 0 (expval->num (nameless-value-of exp nameless-env)))))
+      (nameless-var-exp (n) (apply-nameless-env nameless-env n))
+      (diff-exp (exp1 exp2)
+                (arithmetic-operation - exp1 exp2 nameless-env))
       
+      (add-exp (exp1 exp2)
+               (arithmetic-operation + exp1 exp2 nameless-env))
+     
+      (multiply-exp (exp1 exp2)
+                    (arithmetic-operation * exp1 exp2 nameless-env))
+      
+      (quotient-exp (exp1 exp2)
+                    (arithmetic-operation remainder exp1 exp2 nameless-env))
+      
+      (if-bool-exp (boolexp exp2 exp3)
+             (if (expval->bool (nameless-value-of-bool-exp boolexp nameless-env))
+                 (nameless-value-of exp2 nameless-env)
+                 (nameless-value-of exp3 nameless-env)))
+
+      (bool-exp (exp)
+                (nameless-value-of-bool-exp exp nameless-env))
+              
+      (nameless-let-exp (exps body)
+               (nameless-evaluate-let-exp exps body nameless-env nameless-env))
+
+      (nameless-let*-exp (exps body)
+               (nameless-evaluate-let*-exp exps body nameless-env))
+                      
+      (emptylist-exp () (list-val '()))
+      (car-exp (exp)
+               (let ((val (nameless-value-of exp nameless-env)))
+                 (car (expval->list val))))
+      (cdr-exp (exp)
+               (let ((val (nameless-value-of exp nameless-env)))
+                 (list-val (cdr (expval->list val)))))
+      
+      (cons-exp (exp1 exp2)
+                (let ((val1 (nameless-value-of exp1 nameless-env))
+                      (val2 (nameless-value-of exp2 nameless-env)))
+                  (list-val (cons val1 (expval->list val2)))))
+      (list-exp (exps)
+                (nameless-evaluate-list-exp exps nameless-env))
+      (cond-exp (preds consequences)
+                (nameless-evaluate-cond-exp preds consequences nameless-env))
+      (print-exp (exp)
+                 (begin (eopl:printf "~s" (nameless-value-of exp nameless-env)) (num-val 1)))
+      (nameless-unpack-exp (exp1 body)
+                  (let ((vals (expval->list (nameless-value-of exp1 nameless-env))))
+                        (nameless-value-of body (extend-multivals-nameless-env vals nameless-env))))
+      (nameless-proc-exp (body)
+                (nameless-proc-val (nameless-procedure body nameless-env)))
+      (call-exp (rator rands)
+                (apply-nameless-procedure (expval->nameless-proc (nameless-value-of rator nameless-env)) (evaluate-call-exp-rands rands nameless-env)))
+
+      (nameless-letproc-exp (proc-body let-body)
+                            (nameless-value-of let-body (extend-nameless-env (nameless-proc-val (nameless-procedure proc-body nameless-env)) nameless-env)))
+      (nameless-traceproc-exp (body)
+                              (nameless-proc-val (nameless-trace-procedure body nameless-env)))
+
+     ;; (letrec-exp (p-names procs-vars p-bodys letrec-body)
+     ;;             (nameless-value-of letrec-body (extend-env-rec p-names procs-vars p-bodys nameless-env)))
+
+      ;;else case for  var-exp let-exp let*-exp
+      ;;unpack-exp proc-exp letproc-exp traceproc-exp
+      ;;dynamic-binding-proc-exp letrec-exp 
+      (else
+       (eopl:error 'nameless-value-of "not support exp:~s" nameless-exp))
+      )))
+
+(define nameless-value-of-program
+  (lambda (pgm)
+    (cases program pgm
+      (a-program (exp)
+                 (nameless-value-of exp (init-nameless-env))))))
+ 
+
+
+(define nameless-run
+  (lambda (string)
+    (nameless-value-of-program (run-translation string))))
+
+(define testnp  "let x=37 in let f = proc(y) let z=-(y,x) in -(x,y) in (f 40)")
+
+
+(nameless-run testnp)
       
       
       
