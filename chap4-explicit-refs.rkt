@@ -2,6 +2,8 @@
 
 (require "./chap2.rkt")
 (require  "./chap2-from-section2.4-to-end.rkt")
+(require rackunit)
+
 
 (define lexical-spec
   '((whitespace (whitespace) skip)
@@ -37,6 +39,7 @@
     (expression ("traceproc" "(" (separated-list identifier ",") ")" expression) traceproc-exp)
     (expression ("dynamicproc" "(" (separated-list identifier ",") ")" expression) dynamic-binding-proc-exp)
     (expression ("letrec" (arbno identifier "(" (separated-list identifier ",") ")" "=" expression) "in" expression) letrec-exp)
+    (expression ("begin" expression (arbno ";" expression) "end") begin-exp)
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
     (boolexpression ("zero?" "(" expression ")") zero?-bool-exp)
@@ -117,6 +120,7 @@
   (traceproc-exp (vars (list-of identifier?)) (body expression?))
   (dynamic-binding-proc-exp (vars (list-of identifier?)) (body expression?))
   (letrec-exp (proc-names (list-of identifier?)) (procs-vars (list-of (list-of identifier?))) (proc-bodys (list-of expression?)) (letrec-body expression?))
+  (begin-exp (exp expression?) (subexps (list-of expression?)))
 
   ;;used for lexical addressing
   (nameless-var-exp (index integer?))
@@ -274,6 +278,13 @@
             (cons (value-of (car rands) env)
                   (evaluate-call-exp-rands (cdr rands) env)))))
 
+    (define evaluate-begin-subexps
+      (lambda (subexps pre-val env)
+        (if (null? subexps)
+            pre-val
+            (let ((val (value-of (car subexps) env)))
+              (evaluate-begin-subexps (cdr subexps) val env)))))
+
     (cases expression exp
       (const-exp (num) (num-val num))
       (minus-exp (exp) (num-val (- 0 (expval->num (value-of exp env)))))
@@ -339,6 +350,11 @@
                                 (proc-val (dynamic-binding-procedure vars body)))
       (letrec-exp (p-names procs-vars p-bodys letrec-body)
                   (value-of letrec-body (extend-env-rec p-names procs-vars p-bodys env)))
+
+      (begin-exp (exp1 subexps)
+                 (let ((val (value-of exp1 env)))
+                   (evaluate-begin-subexps subexps val env)))
+      
       ;;lexical addressing; any occurence of the nameless expression we'll report an error
       (else
        (eopl:error 'value-of "occurence of nameless exp:~s" exp))
@@ -526,4 +542,8 @@ in (fact 6)")
        in (odd 13)")
 |#
 
- 
+;;testcase
+
+(check-equal? (run "begin 3 end") (num-val 3))
+(check-equal? (run "let x = 3
+                     in begin -(x,1);+(x,1) end") (num-val 4))
