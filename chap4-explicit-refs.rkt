@@ -415,7 +415,7 @@
                   (let ((refval (value-of exp1 env))
                         (expval (value-of exp2 env)))
                     (begin (setref! refval expval))
-                           (num-val 23)))
+                           expval))
       
       ;;lexical addressing; any occurence of the nameless expression we'll report an error
       (else
