@@ -221,10 +221,14 @@
                             (extend-env 'x (num-val 10)
                                         (empty-env))))))
 (define the-store #f)
+(define slots-size 10240)
+(define latest-avaiable-slot #f)
 
 (define empty-store
   (lambda ()
-    '()))
+    (begin (set! latest-avaiable-slot 0)
+           (make-vector slots-size #f))))
+    
 
 (define get-store
   (lambda ()
@@ -233,6 +237,16 @@
 (define initialize-store!
   (lambda ()
     (set! the-store (empty-store))))
+
+(define get-latest-avaiable-slot
+  (lambda ()
+    (if (>= latest-avaiable-slot slots-size)
+        (eopl:error 'get-latest-avaiable-slot "total slots:~s;current-avaiable-slot:~s" slots-size latest-avaiable-slot)
+        latest-avaiable-slot)))
+
+(define update-latest-avaiable-slot
+  (lambda ()
+    (set! latest-avaiable-slot (+ latest-avaiable-slot 1))))
 
 (define value-of-program
   (lambda (prog)
@@ -315,24 +329,21 @@
 
     (define newref
       (lambda (expval)
-        (let ((the-ref (ref-val (length the-store))))
-          (begin (set! the-store (append the-store (list expval)))
-                 the-ref))))
+        (let ((i (get-latest-avaiable-slot)))
+          (begin (vector-set! the-store i expval)
+                 (update-latest-avaiable-slot)
+                 (ref-val i)))))
 
     (define deref
       (lambda (refval)
         (let ((i (expval->ref refval)))
-          (list-ref the-store i))))
+          (vector-ref the-store i))))
 
     (define setref!
       (lambda (refval expval)
-        (letrec ((inner-setref
-                  (lambda (store i)
-                    (cond ((null? store) (eopl:error 'setref! "invalid reference the-store:%s;the-reference:%s" the-store refval))
-                          ((zero? i) (cons expval (cdr store)))
-                          (else (cons (car store)
-                                      (inner-setref (cdr store) (- i 1))))))))
-          (set! the-store (inner-setref the-store (expval->ref refval))))))
+        (let ((i (expval->ref refval)))
+          (begin (vector-set! the-store i expval)))))
+              
 
     (cases expression exp
       (const-exp (num) (num-val num))
