@@ -25,7 +25,7 @@
      (define apply-env-mutually-rec
         (lambda (search-var p-names procs-vars p-bodys saved-env env)
           (if (null? p-names)
-              (apply-env env search-var)
+              (apply-env saved-env search-var)
               (if (eqv? (car p-names) search-var)
                   (proc-val (procedure (car procs-vars) (car p-bodys) env))
                   (apply-env-mutually-rec search-var (cdr p-names) (cdr procs-vars) (cdr p-bodys) saved-env env)))))
