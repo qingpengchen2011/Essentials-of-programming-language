@@ -40,6 +40,9 @@
     (expression ("dynamicproc" "(" (separated-list identifier ",") ")" expression) dynamic-binding-proc-exp)
     (expression ("letrec" (arbno identifier "(" (separated-list identifier ",") ")" "=" expression) "in" expression) letrec-exp)
     (expression ("begin" expression (arbno ";" expression) "end") begin-exp)
+    (expression ("newref" "(" expression ")") newref-exp)
+    (expression ("deref" "(" expression ")") deref-exp)
+    (expression ("setref" "(" expression "," expression ")") setref-exp)
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
     (boolexpression ("zero?" "(" expression ")") zero?-bool-exp)
@@ -76,7 +79,7 @@
      (define apply-env-mutually-rec
         (lambda (search-var p-names procs-vars p-bodys saved-env env)
           (if (null? p-names)
-              (apply-env env search-var)
+              (apply-env saved-env search-var)
               (if (eqv? (car p-names) search-var)
                   (proc-val (procedure (car procs-vars) (car p-bodys) env))
                   (apply-env-mutually-rec search-var (cdr p-names) (cdr procs-vars) (cdr p-bodys) saved-env env)))))
@@ -121,6 +124,9 @@
   (dynamic-binding-proc-exp (vars (list-of identifier?)) (body expression?))
   (letrec-exp (proc-names (list-of identifier?)) (procs-vars (list-of (list-of identifier?))) (proc-bodys (list-of expression?)) (letrec-body expression?))
   (begin-exp (exp expression?) (subexps (list-of expression?)))
+  (newref-exp (exp expression?))
+  (deref-exp (exp expression?))
+  (setref-exp (exp1 expression?) (exp2 expression?))
 
   ;;used for lexical addressing
   (nameless-var-exp (index integer?))
@@ -148,6 +154,7 @@
   (bool-val (bool boolean?))
   (list-val (list (list-of expval?)))
   (proc-val (proc proc?))
+  (ref-val (n integer?))
   )
 
 (define-datatype proc proc?
@@ -200,6 +207,12 @@
       (proc-val (proc) proc)
       (else (eopl:error 'expval->proc "not a proc value.~s" val)))))
 
+(define expval->ref
+  (lambda (val)
+    (cases expval val
+      (ref-val (n) n)
+      (else (eopl:error 'expval->ref "not a ref value.~s" val)))))
+
 
 (define init-env
   (lambda ()
@@ -207,11 +220,26 @@
                 (extend-env 'v (num-val 5)
                             (extend-env 'x (num-val 10)
                                         (empty-env))))))
+(define the-store #f)
+
+(define empty-store
+  (lambda ()
+    '()))
+
+(define get-store
+  (lambda ()
+    the-store))
+
+(define initialize-store!
+  (lambda ()
+    (set! the-store (empty-store))))
+
 (define value-of-program
   (lambda (prog)
     (cases program prog
       (a-program (exp)
-                 (value-of exp (init-env))))))
+                 (begin (initialize-store!)
+                 (value-of exp (init-env)))))))
 
 (define value-of-bool-exp
       (lambda (exp env)
@@ -285,6 +313,27 @@
             (let ((val (value-of (car subexps) env)))
               (evaluate-begin-subexps (cdr subexps) val env)))))
 
+    (define newref
+      (lambda (expval)
+        (let ((the-ref (ref-val (length the-store))))
+          (begin (set! the-store (append the-store (list expval)))
+                 the-ref))))
+
+    (define deref
+      (lambda (refval)
+        (let ((i (expval->ref refval)))
+          (list-ref the-store i))))
+
+    (define setref!
+      (lambda (refval expval)
+        (letrec ((inner-setref
+                  (lambda (store i)
+                    (cond ((null? store) (eopl:error 'setref! "invalid reference the-store:%s;the-reference:%s" the-store refval))
+                          ((zero? i) (cons expval (cdr store)))
+                          (else (cons (car store)
+                                      (inner-setref (cdr store) (- i 1))))))))
+          (set! the-store (inner-setref the-store (expval->ref refval))))))
+
     (cases expression exp
       (const-exp (num) (num-val num))
       (minus-exp (exp) (num-val (- 0 (expval->num (value-of exp env)))))
@@ -354,6 +403,19 @@
       (begin-exp (exp1 subexps)
                  (let ((val (value-of exp1 env)))
                    (evaluate-begin-subexps subexps val env)))
+
+      (newref-exp (exp)
+                  (let ((val (value-of exp env)))
+                    (newref val)))
+
+      (deref-exp (exp)
+                 (deref (value-of exp env)))
+
+      (setref-exp (exp1 exp2)
+                  (let ((refval (value-of exp1 env))
+                        (expval (value-of exp2 env)))
+                    (begin (setref! refval expval))
+                           (num-val 23)))
       
       ;;lexical addressing; any occurence of the nameless expression we'll report an error
       (else
@@ -547,3 +609,28 @@ in (fact 6)")
 (check-equal? (run "begin 3 end") (num-val 3))
 (check-equal? (run "let x = 3
                      in begin -(x,1);+(x,1) end") (num-val 4))
+
+
+(define testp1 "let x = newref(0)
+                  in letrec even() = if zero?(deref(x)) then 1 else begin setref(x, -(deref(x), 1)); (odd) end
+                            odd() = if zero?(deref(x)) then 0 else begin setref(x,-(deref(x),1)); (even) end
+                      in begin setref(x,13); (even) end ")
+
+
+(check-equal? (run testp1) (num-val 0))
+(check-equal? (run "let x = newref(0)
+       in begin setref(x,12); deref(x) end") (num-val 12))
+
+(check-equal? (run " let x = newref(newref(0))
+      in begin
+          setref(deref(x), 11);
+          deref(deref(x))
+         end") (num-val 11))
+
+(check-equal? (run "let g = let counter = newref(0) in proc (dummy)
+begin
+setref(counter, +(deref(counter), 1)); deref(counter)
+                  end
+      in let a = (g 11)
+         in let b = (g 11)
+            in -(a,b)") (num-val -1))
