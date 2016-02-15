@@ -442,103 +442,101 @@
 
 ;;---------------------------------
 ;;old test case copied
+
 (define testp "let x = 1 in if zero?(-(x,i)) then 10 else 100")
 
 ;;test for exercise3.6
-(run " minus(-(minus(5),9))")
+(check-equal? (run " minus(-(minus(5),9))") (num-val 14))
 
 ;;test for exercise3.7
-(run "+(//(13,4),*(minus(3), 2))")
+(check-equal? (run "+(//(13,4),*(minus(3), 2))") (num-val -5))
 
 ;;test for exercise3.8
-(run "equal?(//(13,4),minus(minus(1)))")
-(run "equal?(//(minus(13),4),minus(minus(1)))")
+(check-equal? (run "equal?(//(13,4),minus(minus(1)))") (bool-val #t))
+(check-equal? (run "equal?(//(minus(13),4),minus(minus(1)))") (bool-val #f))
 
-(run "greater?(//(13,4),minus(2))")
-(run "less?(//(13,4),minus(2))")
-(run "greater?(//(13,minus(4)),2)")
-(run "less?(//(13,minus(4)),2)")
+(check-equal? (run "greater?(//(13,4),minus(2))") (bool-val #t))
+(check-equal? (run "less?(//(13,4),minus(2))") (bool-val #f))
+(check-equal? (run "greater?(//(13,minus(4)),2)") (bool-val #f))
+(check-equal? (run "less?(//(13,minus(4)),2)") (bool-val #t))
 
 ;;test for exercise3.9
 ;;test for cons
-(run "let x = 4 in cons(x,cons(cons(-(x,1),emptylist),emptylist))")
+(check-equal? (run "let x = 4 in cons(x,cons(cons(-(x,1),emptylist),emptylist))") (list-val (cons (num-val 4)
+                                                                                                  (list (list-val (cons (num-val 3) '()))))))
 
 ;;test for car 
-(run "let y = let x = 4 in cons(x,cons(cons(-(x,1),emptylist),emptylist)) in car(y)")
+(check-equal? (run "let y = let x = 4 in cons(x,cons(cons(-(x,1),emptylist),emptylist)) in car(y)") (num-val 4))
 
 ;;test for cdr
-(run "let y = let x = 4 in cons(x,cons(cons(-(x,1),emptylist),emptylist)) in cdr(y)")
+(check-equal? (run "let y = let x = 4 in cons(x,cons(cons(-(x,1),emptylist),emptylist)) in cdr(y)") (list-val (list (list-val (list (num-val 3))))))
 
 ;;test for null?
-(run "null?(cons(1,emptylist))")
-(run "null?(emptylist)")
+(check-equal? (run "null?(cons(1,emptylist))") (bool-val #f))
+(check-equal? (run "null?(emptylist)") (bool-val #t))
 
 ;;test for exercise3.10
-(run "let x = 4 in list(x,-(x,1),-(x,3))")
+(check-equal? (run "let x = 4 in list(x,-(x,1),-(x,3))") (list-val (list (num-val 4) (num-val 3) (num-val 1))))
 
 ;;test for exercise3.12
-(run "cond { zero?(1) ==> 1
+(check-equal? (run "cond { zero?(1) ==> 1
              greater?(2,3) ==> 2
              less?(3,1) ==> 3
              null?(emptylist) ==> 4
-             greater?(3,1) ==> 5 } end ")
+             greater?(3,1) ==> 5 } end ") (num-val 4))
 
 
-(run "if equal?(1,1) then 1 else 2")
+(check-equal? (run "if equal?(1,1) then 1 else 2") (num-val 1))
 
 ;;test for exercise3.15
-(run "let a = 1 in print(let b = 1 in cond {
+(check-equal? (run "let a = 1 in print(let b = 1 in cond {
                                     zero?(a) ==> 0
                                     greater?(a,i) ==> 1
                                     zero?(-(a,i)) ==> 2
-                                    } end )")
+                                    } end )") (num-val 1))
 
 ;;test for exercise3.16
-(run "let x = 30 in let x = -(x,1) y = -(x,2) in -(x,y)")
-(run "let x = 30 in let a = let x = -(x,1) y = -(x,2) in -(x,y) b = 2 in -(a,b)")
+(check-equal? (run "let x = 30 in let x = -(x,1) y = -(x,2) in -(x,y)") (num-val 1))
+(check-equal? (run "let x = 30 in let a = let x = -(x,1) y = -(x,2) in -(x,y) b = 2 in -(a,b)") (num-val -1))
 
 
 
 ;;test for exercise 3.17
-(run "let x = 30 in let* x= -(x,1) y = -(x,2) in -(x,y)")
-(run "let x = 30 in let* a = let x = -(x,1) y = -(x,2) in -(x,y) b = 2 in -(a,b)")
+(check-equal? (run "let x = 30 in let* x= -(x,1) y = -(x,2) in -(x,y)") (num-val 2))
+(check-equal? (run "let x = 30 in let* a = let x = -(x,1) y = -(x,2) in -(x,y) b = 2 in -(a,b)") (num-val -1))
 
 
 ;;test for exercise3.18
-(run "let u = 7 in unpack x y = cons(u,cons(3,emptylist)) in -(x,y)")
-
-;;;error exercise
-;(run "let u = 7 in unpack x y z = cons(u,cons(3,emptylist)) in -(x,y)")
-
+(check-equal? (run "let u = 7 in unpack x y = cons(u,cons(3,emptylist)) in -(x,y)") (num-val 4))
 
 ;;test for basiec PROC Language
-(run "let f = proc(x) -(x,1) in (f (f 77))")
-(run "let x = 200
+(check-equal? (run "let f = proc(x) -(x,1) in (f (f 77))") (num-val 75))
+(check-equal? (run "let x = 200
       in let f = proc (z) -(z,x)
          in let x = 100
             in let g = proc (z) -(z,x)
-               in -((f 1), (g 1))")
+               in -((f 1), (g 1))") (num-val -100))
 
-(run "letproc f (x) -(x,1) in (f (f 77))")
+(check-equal? (run "letproc f (x) -(x,1) in (f (f 77))") (num-val 75))
 
 ;;exercise 3.20
-(run "let f = proc (x) proc (y) +(x,y) in ((f 3) 4)")
+(check-equal? (run "let f = proc (x) proc (y) +(x,y) in ((f 3) 4)") (num-val 7))
 
 
 ;;test for exercise 3.21
-(run "let f = proc (x,y,z) proc (u) +(u,+(x,+(y,z))) in
-((f 1 2 3) 4)")
+(check-equal? (run "let f = proc (x,y,z) proc (u) +(u,+(x,+(y,z))) in
+((f 1 2 3) 4)") (num-val 10))
 
-(run "letproc f (x,y,z) +(x,+(y,z)) in (f 1 2 3)")
+(check-equal? (run "letproc f (x,y,z) +(x,+(y,z)) in (f 1 2 3)") (num-val 6))
 
 ;;exercise3.23
-(run "let makemult = proc (maker) proc (x)
+(check-equal? (run "let makemult = proc (maker) proc (x)
 if zero?(x)
 then 0
 else -(((maker maker) -(x,1)), minus(4))
-in let timesfour = proc (x) ((makemult makemult) x) in (timesfour 3)")
+in let timesfour = proc (x) ((makemult makemult) x) in (timesfour 3)") (num-val 12))
 
-(display (run "let makemultn = proc (n)
+(check-equal? (run "let makemultn = proc (n)
              proc(maker) proc (x)
               if zero?(x)
                  then 0
@@ -551,7 +549,7 @@ in let timesfour = proc (x) ((makemult makemult) x) in (timesfour 3)")
                                  if zero?(n)
                                     then 1
                                     else ((timesn (factfunc -(n,1) factfunc)) n)
-                               in (fact 10 fact)"))
+                               in (fact 10 fact)") (num-val 3628800))
                              
 (define fact
   (lambda (n)
@@ -563,56 +561,55 @@ in let timesfour = proc (x) ((makemult makemult) x) in (timesfour 3)")
 ;;; if we do not support multiple params func in our language grammer we can use Currying to achieve the same effect.
 
 ;;test for exercise 3.27
-(run "let f = traceproc (x) traceproc (y) +(x,y) in ((f 3) 4)")
-(run "let f = traceproc (x,g) +(1,(g x))
+(check-equal? (run "let f = traceproc (x) traceproc (y) +(x,y) in ((f 3) 4)") (num-val 7))
+(check-equal? (run "let f = traceproc (x,g) +(1,(g x))
  g = traceproc(y) y in
- (f 2 g)")
+ (f 2 g)") (num-val 3))
 
     
-(run " let a = 3
+(check-equal? (run " let a = 3
       in let p = dynamicproc (x) -(x,a)
 a=5
-in -(a,(p 2))")
+in -(a,(p 2))") (num-val 8))
 
-(run "let a = 3
+(check-equal? (run "let a = 3
       in let p = dynamicproc (z) a
          in let f = dynamicproc (x) (p 0)
             in let a = 5
-in (f 2)")
+in (f 2)") (num-val 5))
 
 ;;;section3.4 LETREC Language
 
                  
-(run "letrec double(x) = if zero?(x) then 0 else +((double -(x,1)), 2) in (double 6)")
+(check-equal? (run "letrec double(x) = if zero?(x) then 0 else +((double -(x,1)), 2) in (double 6)") (num-val 12))
 
 ;;test for exercise3.31
-(run "letrec double(x,y) = if zero?(x) then 0 else +(y,+((double -(x,1) y), 2)) in (double 6 2)")
+(check-equal? (run "letrec double(x,y) = if zero?(x) then 0 else +(y,+((double -(x,1) y), 2)) in (double 6 2)") (num-val 24))
 
 
 ;;test for exercise 3.32/3.33
-(run "letrec
+(check-equal? (run "letrec
 even(x) = if zero?(x) then 1 else (odd -(x,1))
 odd(x) = if zero?(x) then 0 else (even -(x,1))
-in (odd 12)")
+in (odd 12)") (num-val 0))
 
 ;;exercise 3.37
 ;;for test
-(run "let fact = proc (n) +(n,1) in let fact = proc (n)
+(check-equal? (run "let fact = proc (n) +(n,1) in let fact = proc (n)
                           if zero?(n)
                           then 1
                           else *(n,(fact -(n,1)))
-in (fact 5)")
+in (fact 5)") (num-val 25))
 
-(run "let fact = dynamicproc (n) +(n,1) in let fact = dynamicproc (n)
+(check-equal? (run "let fact = dynamicproc (n) +(n,1) in let fact = dynamicproc (n)
                           if zero?(n)
                           then 1
-                          else *(n,(fact -(n,1)))
-in (fact 6)")
+                          else *(n,(fact -(n,1))) in (fact 6)") (num-val 720))
 ;;implement 3.37
-(run
+(check-equal? (run
  " let even = dynamicproc(x) if zero?(x) then 1 else (odd -(x,1))
     in let odd = dynamicproc(x) if zero?(x) then 0 else (even -(x,1))
-       in (odd 13)")
+       in (odd 13)") (num-val 1))
 
 ;;---------------
 ;;test var-exp
