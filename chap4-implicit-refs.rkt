@@ -24,6 +24,7 @@
     (expression ("//" "(" expression "," expression ")") quotient-exp)
     (expression ("if" boolexpression "then" expression "else" expression) if-bool-exp)
     (expression ("let" (arbno identifier "=" expression) "in" expression) let-exp)
+    (expression ("letmutable" (arbno identifier "=" expression) "in" expression) letmutable-exp)
     (expression ("let*" (arbno identifier "=" expression) "in" expression) let*-exp)
     (expression ("emptylist") emptylist-exp)
     (expression ("cons" "(" expression "," expression ")") cons-exp)
@@ -55,7 +56,7 @@
   (empty-env)
   (extend-env
    (var identifier?)
-   (val reference?)
+   (val expval?)
    (env environment?))
 
   (extend-env-rec
@@ -107,6 +108,7 @@
   (if-bool-exp (bexp boolexpression?) (exp2 expression?) (exp3 expression?))
   (var-exp (var identifier?))
   (let-exp (vars (list-of identifier?)) (exps (list-of expression?)) (body expression?))
+  (letmutable-exp (vars (list-of identifier?)) (exps (list-of expression?)) (body expression?))
   (let*-exp (vars (list-of identifier?)) (exps (list-of expression?)) (body expression?))
   (emptylist-exp)
   (cons-exp (exp1 expression?) (exp2 expression?))
@@ -326,7 +328,18 @@
                               (cdr exps)
                               body-exp
                               argenv
+                              (extend-env (car vars) (value-of (car exps) argenv) finalenv)))))
+
+    (define evaluate-letmutable-exp
+      (lambda (vars exps body-exp argenv finalenv)
+        (if (null? vars)
+            (value-of body-exp finalenv)
+            (evaluate-letmutable-exp (cdr vars)
+                              (cdr exps)
+                              body-exp
+                              argenv
                               (extend-env (car vars) (newref (value-of (car exps) argenv)) finalenv)))))
+    
     (define evaluate-let*-exp
       (lambda (vars exps body-exp env)
         (if (null? vars)
@@ -353,7 +366,11 @@
     (cases expression exp
       (const-exp (num) (num-val num))
       (minus-exp (exp) (num-val (- 0 (expval->num (value-of exp env)))))
-      (var-exp (var) (deref (apply-env env var)))
+      (var-exp (var) (let ((stored-val (apply-env env var)))
+                       (if (reference? stored-val)
+                           (deref stored-val)
+                           stored-val)))
+               
       (diff-exp (exp1 exp2)
                 (arithmetic-operation - exp1 exp2 env))
       
@@ -376,6 +393,9 @@
               
       (let-exp (vars exps body)
                (evaluate-let-exp vars exps body env env))
+
+      (letmutable-exp (vars exps body)
+               (evaluate-letmutable-exp vars exps body env env))
 
       (let*-exp (vars exps body)
                 (evaluate-let*-exp vars exps body env))
@@ -421,9 +441,11 @@
                    (evaluate-begin-subexps subexps val env)))
       (assign-exp (var exp)
                   (let ((val (value-of exp env))
-                        (ref (apply-env env var)))
-                    (begin (setref! ref val)
-                           (num-val 27))))
+                        (ref?? (apply-env env var)))
+                    (if (reference? ref??)
+                        (begin (setref! ref?? val)
+                               (num-val 27))
+                        (eopl:error 'assign-exp "try to set to a none ref variable:~s" var))))
   
       
       ;;lexical addressing; any occurence of the nameless expression we'll report an error
@@ -619,7 +641,7 @@ in (fact 5)") (num-val 25))
 (check-equal? (run "let x = 1 in let y = 2 in +(x,y)") (num-val 3))
 
 ;;test letrec and set
-(check-equal? (run "  let x = 0
+(check-equal? (run "  letmutable x = 0
              in letrec even()
                         = if zero?(x)
                           then 1
@@ -636,7 +658,7 @@ in (fact 5)") (num-val 25))
 in begin set x = 13; (odd ) end") (num-val 1))
 
 ;;test proc and set
-(check-equal? (run "let g = let count = 0
+(check-equal? (run "let g = letmutable count = 0
                      in proc (dummy)
                          begin
                           set count = +(count,1);
@@ -647,6 +669,10 @@ in begin set x = 13; (odd ) end") (num-val 1))
                    in -(b,a)")  (num-val 1))
 
 ;;exercise 4.16
-(run "let times4 = 0
+(check-equal? (run "letmutable times4 = 0
        in begin set times4 = proc (x)
-            if zero?(x) then 0 else +((times4 -(x,1)),4); (times4 3) end ")
+            if zero?(x) then 0 else +((times4 -(x,1)),4); (times4 3) end ") (num-val 12))
+
+;;test for exercise 4.20
+(check-equal? (run "letmutable x = 1 y = 2 in begin set x = 10; set y = 20;  +(x,y) end ") (num-val 30))
+
