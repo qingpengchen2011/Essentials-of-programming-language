@@ -42,6 +42,7 @@
     (expression ("letrec" (arbno identifier "(" (separated-list identifier ",") ")" "=" expression) "in" expression) letrec-exp)
     (expression ("begin" expression (arbno ";" expression) "end") begin-exp)
     (expression ("set" identifier "=" expression) assign-exp)
+    (expression ("setdynamic" identifier "=" expression "during" expression) setdynamic-exp)
     
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
@@ -126,6 +127,7 @@
   (letrec-exp (proc-names (list-of identifier?)) (procs-vars (list-of (list-of identifier?))) (proc-bodys (list-of expression?)) (letrec-body expression?))
   (begin-exp (exp expression?) (subexps (list-of expression?)))
   (assign-exp (var identifier?) (exp expression?))
+  (setdynamic-exp (var identifier?) (exp1 expression?) (exp2 expression?))
 
 
   ;;used for lexical addressing
@@ -446,9 +448,18 @@
                         (begin (setref! ref?? val)
                                (num-val 27))
                         (eopl:error 'assign-exp "try to set to a none ref variable:~s" var))))
-  
-      
-      ;;lexical addressing; any occurence of the nameless expression we'll report an error
+
+      (setdynamic-exp (var exp body)
+                      (letrec ((new-val (value-of exp env))
+                               (var-ref (apply-env env var))
+                               (old-val (deref var-ref)))
+                        (begin (setref! var-ref new-val)
+                               (let ((new-val (value-of body env)))
+                                 (begin (setref! var-ref old-val)
+                                        new-val)))))
+                   
+                        
+       ;;lexical addressing; any occurence of the nameless expression we'll report an error
       (else
        (eopl:error 'value-of "occurence of nameless exp:~s" exp))
 
@@ -676,3 +687,5 @@ in begin set x = 13; (odd ) end") (num-val 1))
 ;;test for exercise 4.20
 (check-equal? (run "letmutable x = 1 y = 2 in begin set x = 10; set y = 20;  +(x,y) end ") (num-val 30))
 
+;;test for exercise4.21
+(check-equal? (run "letmutable x = 11 in let p = proc(y) -(y,x) in -(setdynamic x = 17 during (p 22), (p 13))") (num-val 3))
