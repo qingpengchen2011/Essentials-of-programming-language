@@ -40,9 +40,8 @@
     (expression ("dynamicproc" "(" (separated-list identifier ",") ")" expression) dynamic-binding-proc-exp)
     (expression ("letrec" (arbno identifier "(" (separated-list identifier ",") ")" "=" expression) "in" expression) letrec-exp)
     (expression ("begin" expression (arbno ";" expression) "end") begin-exp)
-    (expression ("newref" "(" expression ")") newref-exp)
-    (expression ("deref" "(" expression ")") deref-exp)
-    (expression ("setref" "(" expression "," expression ")") setref-exp)
+    (expression ("set" identifier "=" expression) assign-exp)
+    
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
     (boolexpression ("zero?" "(" expression ")") zero?-bool-exp)
@@ -56,7 +55,7 @@
   (empty-env)
   (extend-env
    (var identifier?)
-   (val expval?)
+   (val reference?)
    (env environment?))
 
   (extend-env-rec
@@ -71,7 +70,7 @@
                         (if (null? vars)
                             env
                             (extend-env (car vars)
-                                        (car vals)
+                                        (newref (car vals))
                                         (extend-multivars-env (cdr vars) (cdr vals) env)))))
 
 (define apply-env
@@ -81,7 +80,7 @@
           (if (null? p-names)
               (apply-env saved-env search-var)
               (if (eqv? (car p-names) search-var)
-                  (proc-val (procedure (car procs-vars) (car p-bodys) env))
+                  (newref (proc-val (procedure (car procs-vars) (car p-bodys) env)))
                   (apply-env-mutually-rec search-var (cdr p-names) (cdr procs-vars) (cdr p-bodys) saved-env env)))))
     (cases environment env
       (empty-env () report-no-binding-found search-var)
@@ -124,9 +123,8 @@
   (dynamic-binding-proc-exp (vars (list-of identifier?)) (body expression?))
   (letrec-exp (proc-names (list-of identifier?)) (procs-vars (list-of (list-of identifier?))) (proc-bodys (list-of expression?)) (letrec-body expression?))
   (begin-exp (exp expression?) (subexps (list-of expression?)))
-  (newref-exp (exp expression?))
-  (deref-exp (exp expression?))
-  (setref-exp (exp1 expression?) (exp2 expression?))
+  (assign-exp (var identifier?) (exp expression?))
+
 
   ;;used for lexical addressing
   (nameless-var-exp (index integer?))
@@ -156,6 +154,13 @@
   (proc-val (proc proc?))
   (ref-val (n integer?))
   )
+
+
+(define reference?
+  (lambda (val)
+    (cases expval val
+      (ref-val (n) #t)
+      (else #f))))
 
 (define-datatype proc proc?
   (procedure (vars (list-of identifier?))
@@ -216,9 +221,9 @@
 
 (define init-env
   (lambda ()
-    (extend-env 'i (num-val 1)
-                (extend-env 'v (num-val 5)
-                            (extend-env 'x (num-val 10)
+    (extend-env 'i (newref (num-val 1))
+                (extend-env 'v (newref (num-val 5))
+                            (extend-env 'x (newref (num-val 10))
                                         (empty-env))))))
 (define the-store #f)
 (define slots-size 10240)
@@ -248,12 +253,30 @@
   (lambda ()
     (set! latest-avaiable-slot (+ latest-avaiable-slot 1))))
 
+(define newref
+      (lambda (expval)
+        (let ((i (get-latest-avaiable-slot)))
+          (begin (vector-set! the-store i expval)
+                 (update-latest-avaiable-slot)
+                 (ref-val i)))))
+
+    (define deref
+      (lambda (refval)
+        (let ((i (expval->ref refval)))
+          (vector-ref the-store i))))
+
+    (define setref!
+      (lambda (refval expval)
+        (let ((i (expval->ref refval)))
+          (begin (vector-set! the-store i expval)))))
+
 (define value-of-program
   (lambda (prog)
     (cases program prog
       (a-program (exp)
                  (begin (initialize-store!)
                  (value-of exp (init-env)))))))
+
 
 (define value-of-bool-exp
       (lambda (exp env)
@@ -303,7 +326,7 @@
                               (cdr exps)
                               body-exp
                               argenv
-                              (extend-env (car vars) (value-of (car exps) argenv) finalenv)))))
+                              (extend-env (car vars) (newref (value-of (car exps) argenv)) finalenv)))))
     (define evaluate-let*-exp
       (lambda (vars exps body-exp env)
         (if (null? vars)
@@ -311,7 +334,7 @@
             (evaluate-let*-exp (cdr vars)
                                (cdr exps)
                                body-exp
-                               (extend-env (car vars) (value-of (car exps) env) env)))))
+                               (extend-env (car vars) (newref (value-of (car exps) env)) env)))))
 
     (define evaluate-call-exp-rands
       (lambda (rands env)
@@ -325,30 +348,12 @@
         (if (null? subexps)
             pre-val
             (let ((val (value-of (car subexps) env)))
-              (evaluate-begin-subexps (cdr subexps) val env)))))
-
-    (define newref
-      (lambda (expval)
-        (let ((i (get-latest-avaiable-slot)))
-          (begin (vector-set! the-store i expval)
-                 (update-latest-avaiable-slot)
-                 (ref-val i)))))
-
-    (define deref
-      (lambda (refval)
-        (let ((i (expval->ref refval)))
-          (vector-ref the-store i))))
-
-    (define setref!
-      (lambda (refval expval)
-        (let ((i (expval->ref refval)))
-          (begin (vector-set! the-store i expval)))))
-              
+              (evaluate-begin-subexps (cdr subexps) val env)))))              
 
     (cases expression exp
       (const-exp (num) (num-val num))
       (minus-exp (exp) (num-val (- 0 (expval->num (value-of exp env)))))
-      (var-exp (var) (apply-env env var))
+      (var-exp (var) (deref (apply-env env var)))
       (diff-exp (exp1 exp2)
                 (arithmetic-operation - exp1 exp2 env))
       
@@ -403,7 +408,7 @@
       (call-exp (rator rands)
                 (apply-procedure (expval->proc (value-of rator env)) (evaluate-call-exp-rands rands env) env))
       (letproc-exp (proc-name vars proc-body body)
-                   (value-of body (extend-env proc-name (proc-val (procedure vars proc-body env)) env)))
+                   (value-of body (extend-env proc-name (newref (proc-val (procedure vars proc-body env))) env)))
       (traceproc-exp (vars body)
                      (proc-val (trace-procedure vars body env)))
       (dynamic-binding-proc-exp (vars body)
@@ -414,19 +419,12 @@
       (begin-exp (exp1 subexps)
                  (let ((val (value-of exp1 env)))
                    (evaluate-begin-subexps subexps val env)))
-
-      (newref-exp (exp)
-                  (let ((val (value-of exp env)))
-                    (newref val)))
-
-      (deref-exp (exp)
-                 (deref (value-of exp env)))
-
-      (setref-exp (exp1 exp2)
-                  (let ((refval (value-of exp1 env))
-                        (expval (value-of exp2 env)))
-                    (begin (setref! refval expval))
-                           expval))
+      (assign-exp (var exp)
+                  (let ((val (value-of exp env))
+                        (ref (apply-env env var)))
+                    (begin (setref! ref val)
+                           (num-val 27))))
+  
       
       ;;lexical addressing; any occurence of the nameless expression we'll report an error
       (else
@@ -440,3 +438,218 @@
 (define run
   (lambda (string)
     (value-of-program (scan&parse string))))
+
+
+;;---------------------------------
+;;old test case copied
+(define testp "let x = 1 in if zero?(-(x,i)) then 10 else 100")
+
+;;test for exercise3.6
+(run " minus(-(minus(5),9))")
+
+;;test for exercise3.7
+(run "+(//(13,4),*(minus(3), 2))")
+
+;;test for exercise3.8
+(run "equal?(//(13,4),minus(minus(1)))")
+(run "equal?(//(minus(13),4),minus(minus(1)))")
+
+(run "greater?(//(13,4),minus(2))")
+(run "less?(//(13,4),minus(2))")
+(run "greater?(//(13,minus(4)),2)")
+(run "less?(//(13,minus(4)),2)")
+
+;;test for exercise3.9
+;;test for cons
+(run "let x = 4 in cons(x,cons(cons(-(x,1),emptylist),emptylist))")
+
+;;test for car 
+(run "let y = let x = 4 in cons(x,cons(cons(-(x,1),emptylist),emptylist)) in car(y)")
+
+;;test for cdr
+(run "let y = let x = 4 in cons(x,cons(cons(-(x,1),emptylist),emptylist)) in cdr(y)")
+
+;;test for null?
+(run "null?(cons(1,emptylist))")
+(run "null?(emptylist)")
+
+;;test for exercise3.10
+(run "let x = 4 in list(x,-(x,1),-(x,3))")
+
+;;test for exercise3.12
+(run "cond { zero?(1) ==> 1
+             greater?(2,3) ==> 2
+             less?(3,1) ==> 3
+             null?(emptylist) ==> 4
+             greater?(3,1) ==> 5 } end ")
+
+
+(run "if equal?(1,1) then 1 else 2")
+
+;;test for exercise3.15
+(run "let a = 1 in print(let b = 1 in cond {
+                                    zero?(a) ==> 0
+                                    greater?(a,i) ==> 1
+                                    zero?(-(a,i)) ==> 2
+                                    } end )")
+
+;;test for exercise3.16
+(run "let x = 30 in let x = -(x,1) y = -(x,2) in -(x,y)")
+(run "let x = 30 in let a = let x = -(x,1) y = -(x,2) in -(x,y) b = 2 in -(a,b)")
+
+
+
+;;test for exercise 3.17
+(run "let x = 30 in let* x= -(x,1) y = -(x,2) in -(x,y)")
+(run "let x = 30 in let* a = let x = -(x,1) y = -(x,2) in -(x,y) b = 2 in -(a,b)")
+
+
+;;test for exercise3.18
+(run "let u = 7 in unpack x y = cons(u,cons(3,emptylist)) in -(x,y)")
+
+;;;error exercise
+;(run "let u = 7 in unpack x y z = cons(u,cons(3,emptylist)) in -(x,y)")
+
+
+;;test for basiec PROC Language
+(run "let f = proc(x) -(x,1) in (f (f 77))")
+(run "let x = 200
+      in let f = proc (z) -(z,x)
+         in let x = 100
+            in let g = proc (z) -(z,x)
+               in -((f 1), (g 1))")
+
+(run "letproc f (x) -(x,1) in (f (f 77))")
+
+;;exercise 3.20
+(run "let f = proc (x) proc (y) +(x,y) in ((f 3) 4)")
+
+
+;;test for exercise 3.21
+(run "let f = proc (x,y,z) proc (u) +(u,+(x,+(y,z))) in
+((f 1 2 3) 4)")
+
+(run "letproc f (x,y,z) +(x,+(y,z)) in (f 1 2 3)")
+
+;;exercise3.23
+(run "let makemult = proc (maker) proc (x)
+if zero?(x)
+then 0
+else -(((maker maker) -(x,1)), minus(4))
+in let timesfour = proc (x) ((makemult makemult) x) in (timesfour 3)")
+
+(display (run "let makemultn = proc (n)
+             proc(maker) proc (x)
+              if zero?(x)
+                 then 0
+                 else +(((maker maker) -(x,1)), n)
+      in let timesn = proc (n)
+                      let f = (makemultn n) in
+                      proc (x) 
+                          ((f f) x) in
+                             let fact = proc (n , factfunc)
+                                 if zero?(n)
+                                    then 1
+                                    else ((timesn (factfunc -(n,1) factfunc)) n)
+                               in (fact 10 fact)"))
+                             
+(define fact
+  (lambda (n)
+    (if (zero? n)
+        1
+        (* n (fact (- n 1))))))
+
+;;; the trick Currying is used to support multiple params func.
+;;; if we do not support multiple params func in our language grammer we can use Currying to achieve the same effect.
+
+;;test for exercise 3.27
+(run "let f = traceproc (x) traceproc (y) +(x,y) in ((f 3) 4)")
+(run "let f = traceproc (x,g) +(1,(g x))
+ g = traceproc(y) y in
+ (f 2 g)")
+
+    
+(run " let a = 3
+      in let p = dynamicproc (x) -(x,a)
+a=5
+in -(a,(p 2))")
+
+(run "let a = 3
+      in let p = dynamicproc (z) a
+         in let f = dynamicproc (x) (p 0)
+            in let a = 5
+in (f 2)")
+
+;;;section3.4 LETREC Language
+
+                 
+(run "letrec double(x) = if zero?(x) then 0 else +((double -(x,1)), 2) in (double 6)")
+
+;;test for exercise3.31
+(run "letrec double(x,y) = if zero?(x) then 0 else +(y,+((double -(x,1) y), 2)) in (double 6 2)")
+
+
+;;test for exercise 3.32/3.33
+(run "letrec
+even(x) = if zero?(x) then 1 else (odd -(x,1))
+odd(x) = if zero?(x) then 0 else (even -(x,1))
+in (odd 12)")
+
+;;exercise 3.37
+;;for test
+(run "let fact = proc (n) +(n,1) in let fact = proc (n)
+                          if zero?(n)
+                          then 1
+                          else *(n,(fact -(n,1)))
+in (fact 5)")
+
+(run "let fact = dynamicproc (n) +(n,1) in let fact = dynamicproc (n)
+                          if zero?(n)
+                          then 1
+                          else *(n,(fact -(n,1)))
+in (fact 6)")
+;;implement 3.37
+(run
+ " let even = dynamicproc(x) if zero?(x) then 1 else (odd -(x,1))
+    in let odd = dynamicproc(x) if zero?(x) then 0 else (even -(x,1))
+       in (odd 13)")
+
+;;---------------
+;;test var-exp
+(check-equal? (run "let x = 1 in x") (num-val 1))
+
+;;test let
+(check-equal? (run "let x = 1 in let y = 2 in +(x,y)") (num-val 3))
+
+;;test letrec and set
+(check-equal? (run "  let x = 0
+             in letrec even()
+                        = if zero?(x)
+                          then 1
+                          else begin
+                                set x = -(x,1);
+(odd ) end
+                       odd()
+                        = if zero?(x)
+                          then 0
+                          else begin
+                                set x = -(x,1);
+                                (even )
+                               end
+in begin set x = 13; (odd ) end") (num-val 1))
+
+;;test proc and set
+(check-equal? (run "let g = let count = 0
+                     in proc (dummy)
+                         begin
+                          set count = +(count,1);
+                          count
+                         end
+             in let a = (g 11)
+                in let b = (g 11)
+                   in -(b,a)")  (num-val 1))
+
+;;exercise 4.16
+(run "let times4 = 0
+       in begin set times4 = proc (x)
+            if zero?(x) then 0 else +((times4 -(x,1)),4); (times4 3) end ")
