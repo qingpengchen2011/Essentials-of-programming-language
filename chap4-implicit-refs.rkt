@@ -43,6 +43,11 @@
     (expression ("begin" expression (arbno ";" expression) "end") begin-exp)
     (expression ("set" identifier "=" expression) assign-exp)
     (expression ("setdynamic" identifier "=" expression "during" expression) setdynamic-exp)
+    (expression ("pair" "(" expression "," expression ")") newpair-exp)
+    (expression ("left" "(" expression ")") left-exp)
+    (expression ("right" "(" expression ")") right-exp)
+    (expression ("setleft" "(" expression "," expression ")") setleft-exp)
+    (expression ("setright" "(" expression "," expression ")" ) setright-exp)
     
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
@@ -128,6 +133,11 @@
   (begin-exp (exp expression?) (subexps (list-of expression?)))
   (assign-exp (var identifier?) (exp expression?))
   (setdynamic-exp (var identifier?) (exp1 expression?) (exp2 expression?))
+  (newpair-exp (exp1 expression?) (exp2 expression?))
+  (left-exp (exp expression?))
+  (right-exp (exp expression?))
+  (setleft-exp (exp1 expression?) (exp2 expression?))
+  (setright-exp (exp1 expression?) (exp2 expression?))
 
 
   ;;used for lexical addressing
@@ -157,8 +167,12 @@
   (list-val (list (list-of expval?)))
   (proc-val (proc proc?))
   (ref-val (n integer?))
+  (mutpair-val (pair mutpair?))
   )
 
+(define-datatype mutpair mutpair?
+  (a-pair (ref reference?)))
+              
 
 (define reference?
   (lambda (val)
@@ -222,6 +236,11 @@
       (ref-val (n) n)
       (else (eopl:error 'expval->ref "not a ref value.~s" val)))))
 
+(define expval->mutpair
+  (lambda (val)
+    (cases expval val
+      (mutpair-val (pair) pair)
+      (else (eopl:error 'expval->mutpair "not a mutpair value.~s" val)))))
 
 (define init-env
   (lambda ()
@@ -257,6 +276,10 @@
   (lambda ()
     (set! latest-avaiable-slot (+ latest-avaiable-slot 1))))
 
+(define update-latest-avaiable-slot-by
+  (lambda (step)
+    (set! latest-avaiable-slot (+ latest-avaiable-slot step))))
+
 (define newref
       (lambda (expval)
         (let ((i (get-latest-avaiable-slot)))
@@ -273,6 +296,39 @@
       (lambda (refval expval)
         (let ((i (expval->ref refval)))
           (begin (vector-set! the-store i expval)))))
+
+(define new-pair
+  (lambda (val1 val2)
+    (let ((ref (newref val1)))
+      (begin (newref val2)
+             (a-pair ref)))))
+
+(define left
+  (lambda (pair)
+    (cases mutpair pair
+      (a-pair (ref)
+              (deref ref)))))
+
+(define right
+  (lambda (pair)
+    (cases mutpair pair
+      (a-pair (ref)
+              (let ((right-ref (ref-val (+ (expval->ref ref) 1))))
+                (deref right-ref))))))
+
+(define setleft
+  (lambda (pair val)
+    (cases mutpair pair
+      (a-pair (ref)
+              (setref! ref val)))))
+
+(define setright
+  (lambda (pair val)
+    (cases mutpair pair
+      (a-pair (ref)
+              (let ((right-ref (ref-val (+ (expval->ref ref) 1))))
+                (setref! right-ref val))))))
+                     
 
 (define value-of-program
   (lambda (prog)
@@ -457,6 +513,31 @@
                                (let ((new-val (value-of body env)))
                                  (begin (setref! var-ref old-val)
                                         new-val)))))
+
+      (newpair-exp (exp1 exp2)
+                   (let ((val1 (value-of exp1 env))
+                         (val2 (value-of exp2 env)))
+                     (mutpair-val (new-pair val1 val2))))
+
+      (left-exp (exp)
+                (let ((val (value-of exp env)))
+                  (left (expval->mutpair val))))
+
+      (right-exp (exp)
+                 (let ((val (value-of exp env)))
+                   (right (expval->mutpair val))))
+
+      (setleft-exp (exp1 exp2)
+                   (let ((val1 (value-of exp1 env))
+                         (val2 (value-of exp2 env)))
+                     (begin (setleft (expval->mutpair val1) val2)
+                            (num-val 82))))
+
+      (setright-exp (exp1 exp2)
+                    (let ((val1 (value-of exp1 env))
+                          (val2 (value-of exp2 env)))
+                      (begin (setright (expval->mutpair val1) val2)
+                             (num-val 83))))
                    
                         
        ;;lexical addressing; any occurence of the nameless expression we'll report an error
@@ -689,3 +770,10 @@ in begin set x = 13; (odd ) end") (num-val 1))
 
 ;;test for exercise4.21
 (check-equal? (run "letmutable x = 11 in let p = proc(y) -(y,x) in -(setdynamic x = 17 during (p 22), (p 13))") (num-val 3))
+
+;;Mutable-pair test
+(check-equal? (run  "let glo = pair(11,22)
+in let f = proc (loc)
+let d1 = setright(loc, left(loc)) in let d2 = setleft(glo, 99)
+in -(left(loc),right(loc))
+in (f glo)") (num-val 88))
