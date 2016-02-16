@@ -48,6 +48,9 @@
     (expression ("right" "(" expression ")") right-exp)
     (expression ("setleft" "(" expression "," expression ")") setleft-exp)
     (expression ("setright" "(" expression "," expression ")" ) setright-exp)
+    (expression ("newarray" "(" expression "," expression ")") newarray-exp)
+    (expression ("arrayref" "(" expression "," expression ")") arrayref-exp)
+    (expression ("arrayset" "(" expression "," expression "," expression ")") arrayset-exp)
     
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
@@ -138,6 +141,10 @@
   (right-exp (exp expression?))
   (setleft-exp (exp1 expression?) (exp2 expression?))
   (setright-exp (exp1 expression?) (exp2 expression?))
+  (newarray-exp (exp1 expression?) (exp2 expression?))
+  (arrayref-exp (exp1 expression?) (exp2 expression?))
+  (arrayset-exp (exp1 expression?) (exp2 expression?) (exp3 expression?))
+
 
 
   ;;used for lexical addressing
@@ -168,11 +175,16 @@
   (proc-val (proc proc?))
   (ref-val (n integer?))
   (mutpair-val (pair mutpair?))
+  (array-val (ary array?))
   )
 
 (define-datatype mutpair mutpair?
   (a-pair (ref reference?)))
-              
+
+(define-datatype array array?
+  (a-array (start-ref reference?) (length integer?))
+  (empty-array )
+  )
 
 (define reference?
   (lambda (val)
@@ -241,6 +253,13 @@
     (cases expval val
       (mutpair-val (pair) pair)
       (else (eopl:error 'expval->mutpair "not a mutpair value.~s" val)))))
+
+(define expval->array
+  (lambda (val)
+    (cases expval val
+      (array-val (ary) ary)
+      (else (eopl:error 'expval->array "not a array value.~s" val)))))
+
 
 (define init-env
   (lambda ()
@@ -328,7 +347,44 @@
       (a-pair (ref)
               (let ((right-ref (ref-val (+ (expval->ref ref) 1))))
                 (setref! right-ref val))))))
-                     
+
+(define newarray
+  (lambda (length init-val)
+    (define alloc-space
+      (lambda (size val)
+        (if (zero? size)
+            #t
+            (begin (newref val)
+                   (alloc-space (- size 1) val)))))
+    (if (zero? length)
+        (empty-array)
+        (let ((start-ref (newref init-val)))
+          (begin (alloc-space (- length 1) init-val)
+                 (a-array start-ref length))))))
+          
+
+(define arrayref
+  (lambda (ary index)
+    (cases array ary
+      (empty-array () (eopl:error 'arrayref "try to index an empty array with index:~s" index))
+      (a-array (start-ref len)
+               (if (>= index len)
+                   (eopl:error 'arrayref "index out of range with array length:~s, but try to index at ~s" len index)
+                   (let ((target-ref (ref-val (+ (expval->ref start-ref) index))))
+                     (deref target-ref)))))))
+                  
+(define arrayset
+  (lambda (ary index val)
+    (cases array ary
+      (empty-array () (eopl:error 'arrayset "try to set an empty array."))
+      (a-array (start-ref len)
+               (if (>= index len)
+                   (eopl:error 'arrayset "index out of range with array length:~s, but try to set at index: ~s" len index)
+                   (let ((target-ref (ref-val (+ (expval->ref start-ref) index))))
+                     (setref! target-ref val)))))))
+
+                   
+
 
 (define value-of-program
   (lambda (prog)
@@ -538,6 +594,21 @@
                           (val2 (value-of exp2 env)))
                       (begin (setright (expval->mutpair val1) val2)
                              (num-val 83))))
+
+      (newarray-exp (exp1 exp2)
+                    (let ((size-val (value-of exp1 env))
+                          (initval-val (value-of exp2 env)))
+                      (array-val (newarray (expval->num size-val) initval-val))))
+      (arrayref-exp (exp1 exp2)
+                    (let ((arrayval (value-of exp1 env))
+                          (indexval (value-of exp2 env)))
+                      (arrayref (expval->array arrayval) (expval->num indexval))))
+      (arrayset-exp (exp1 exp2 exp3)
+                    (let ((arrayval (value-of exp1 env))
+                          (indexval (value-of exp2 env))
+                          (valtobeset (value-of exp3 env)))
+                      (begin (arrayset (expval->array arrayval) (expval->num indexval) valtobeset)
+                             (num-val 100))))
                    
                         
        ;;lexical addressing; any occurence of the nameless expression we'll report an error
@@ -781,3 +852,21 @@ in (f glo)") (num-val 88))
 (check-equal? (run "let p = pair(1,2) in
               let f = proc (p) begin setright(p,10);setleft(p,100) end
                in begin (f p); -(left(p),right(p)) end") (num-val 90))
+
+;;test for exercise4.29
+(check-equal? (run "
+      let a = newarray(2,minus(99))
+          p = proc (x)
+               let v = arrayref(x,1)
+in arrayset(x,1,+(v,1))
+in begin arrayset(a,1,0); (p a); (p a); arrayref(a,1) end") (num-val 2))
+
+;;error test
+#|
+(check-equal? (run "
+      let a = newarray(0,minus(99))
+          p = proc (x)
+               let v = arrayref(x,1)
+in arrayset(x,1,+(v,1))
+in begin  arrayref(a,1) end") (num-val 2))
+|#
