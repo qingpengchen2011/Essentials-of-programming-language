@@ -51,6 +51,7 @@
     (expression ("newarray" "(" expression "," expression ")") newarray-exp)
     (expression ("arrayref" "(" expression "," expression ")") arrayref-exp)
     (expression ("arrayset" "(" expression "," expression "," expression ")") arrayset-exp)
+    (expression ("arraylength" "(" expression ")") arraylen-exp)
     
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
@@ -144,6 +145,7 @@
   (newarray-exp (exp1 expression?) (exp2 expression?))
   (arrayref-exp (exp1 expression?) (exp2 expression?))
   (arrayset-exp (exp1 expression?) (exp2 expression?) (exp3 expression?))
+  (arraylen-exp (exp expression?))
 
 
 
@@ -383,7 +385,13 @@
                    (let ((target-ref (ref-val (+ (expval->ref start-ref) index))))
                      (setref! target-ref val)))))))
 
-                   
+
+(define arraylen
+  (lambda (ary)
+    (cases array ary
+      (empty-array () (num-val 0))
+      (a-array (start-ref len)
+               (num-val len)))))
 
 
 (define value-of-program
@@ -609,6 +617,9 @@
                           (valtobeset (value-of exp3 env)))
                       (begin (arrayset (expval->array arrayval) (expval->num indexval) valtobeset)
                              (num-val 100))))
+      (arraylen-exp (exp)
+                    (let ((arrayval (value-of exp env)))
+                      (arraylen (expval->array arrayval))))
                    
                         
        ;;lexical addressing; any occurence of the nameless expression we'll report an error
@@ -870,3 +881,7 @@ in begin arrayset(a,1,0); (p a); (p a); arrayref(a,1) end") (num-val 2))
 in arrayset(x,1,+(v,1))
 in begin  arrayref(a,1) end") (num-val 2))
 |#
+
+;;test for exercise4.30
+(check-equal? (run "arraylength(newarray(2,99))") (num-val 2))
+(check-equal? (run "arraylength(newarray(0,100))") (num-val 0))
