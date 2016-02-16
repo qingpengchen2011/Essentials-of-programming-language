@@ -777,3 +777,7 @@ in let f = proc (loc)
 let d1 = setright(loc, left(loc)) in let d2 = setleft(glo, 99)
 in -(left(loc),right(loc))
 in (f glo)") (num-val 88))
+
+(check-equal? (run "let p = pair(1,2) in
+              let f = proc (p) begin setright(p,10);setleft(p,100) end
+               in begin (f p); -(left(p),right(p)) end") (num-val 90))
