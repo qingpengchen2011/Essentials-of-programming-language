@@ -23,9 +23,10 @@
     (expression ("*" "(" expression "," expression ")") multiply-exp)
     (expression ("//" "(" expression "," expression ")") quotient-exp)
     (expression ("if" boolexpression "then" expression "else" expression) if-bool-exp)
-    (expression ("let" (arbno identifier "=" expression) "in" expression) let-exp)
-    (expression ("letmutable" (arbno identifier "=" expression) "in" expression) letmutable-exp)
+    (expression ("let" (arbno identifier "=" expression) "in" expression) let-exp) ;;let的语意是直接做一个variable的binding. not-mutable
+    (expression ("letmutable" (arbno identifier "=" expression) "in" expression) letmutable-exp);;letmutable的语意是introduce一个reference; mutable. 当其作为函数参数时，可在函数内被修改且修改反应到原变量.
     (expression ("let*" (arbno identifier "=" expression) "in" expression) let*-exp)
+    (expression ("letref" (arbno identifier "=" expression) "in" expression) letref-exp) ;;letref语意同letmutable
     (expression ("emptylist") emptylist-exp)
     (expression ("cons" "(" expression "," expression ")") cons-exp)
     (expression ("car" "(" expression ")") car-exp)
@@ -81,7 +82,7 @@
                         (if (null? vars)
                             env
                             (extend-env (car vars)
-                                        (newref (car vals))
+                                        (car vals)
                                         (extend-multivars-env (cdr vars) (cdr vals) env)))))
 
 (define apply-env
@@ -119,6 +120,7 @@
   (var-exp (var identifier?))
   (let-exp (vars (list-of identifier?)) (exps (list-of expression?)) (body expression?))
   (letmutable-exp (vars (list-of identifier?)) (exps (list-of expression?)) (body expression?))
+  (letref-exp (vars (list-of identifier?)) (exps (list-of expression?)) (body expression?))
   (let*-exp (vars (list-of identifier?)) (exps (list-of expression?)) (body expression?))
   (emptylist-exp)
   (cons-exp (exp1 expression?) (exp2 expression?))
@@ -461,7 +463,7 @@
                               body-exp
                               argenv
                               (extend-env (car vars) (newref (value-of (car exps) argenv)) finalenv)))))
-    
+
     (define evaluate-let*-exp
       (lambda (vars exps body-exp env)
         (if (null? vars)
@@ -475,9 +477,16 @@
       (lambda (rands env)
         (if (null? rands)
             '()
-            (cons (value-of (car rands) env)
-                  (evaluate-call-exp-rands (cdr rands) env)))))
-
+            (cons
+             (let ((rand (car rands)))
+               (cases expression rand
+                 (var-exp (var) (let ((ref (apply-env env var)))
+                                  (if (reference? ref)
+                                      ref
+                                      (newref ref)))) ;;forward compatible. if the var is a expval, introduce a newref to it.
+                 (else (newref (value-of rand env)))))
+             (evaluate-call-exp-rands (cdr rands) env)))))
+                    
     (define evaluate-begin-subexps
       (lambda (subexps pre-val env)
         (if (null? subexps)
@@ -519,6 +528,9 @@
       (letmutable-exp (vars exps body)
                (evaluate-letmutable-exp vars exps body env env))
 
+      (letref-exp (vars exps body)
+                  (evaluate-letmutable-exp vars exps body env env))
+
       (let*-exp (vars exps body)
                 (evaluate-let*-exp vars exps body env))
       
@@ -544,7 +556,7 @@
                   (let ((vals (expval->list (value-of exp1 env))))
                     (if (not (eqv? (length vars) (length vals)))
                         (eopl:error 'unpack-exp "number of vars do not match the list element length in expression:~s" exp)
-                        (value-of body (extend-multivars-env vars vals env)))))
+                        (value-of body (extend-multivars-env vars (map (lambda (val) (newref val)) vals) env)))))
       (proc-exp (vars body)
                 (proc-val (procedure vars body env)))
       (call-exp (rator rands)
@@ -885,3 +897,28 @@ in begin  arrayref(a,1) end") (num-val 2))
 ;;test for exercise4.30
 (check-equal? (run "arraylength(newarray(2,99))") (num-val 2))
 (check-equal? (run "arraylength(newarray(0,100))") (num-val 0))
+
+;;test for Parameter-Passing Variations
+(check-equal? (run "let u = 7 in unpack x y = cons(u,cons(3,emptylist)) in begin set x = 100; set y = 200; +(x,y) end ") (num-val 300))
+;;note:我们改变了语意，只有是letmutable的变量才是mutable的.
+(check-equal? (run "letmutable y = 10 in let f = proc(x) begin set x = 100 end in begin (f y); y end") (num-val 100))
+
+;;tests for call-by-reference
+(check-equal? (run " let f = proc (x) set x = 44 in let g = proc (y) (f y) in letmutable z = 55 in begin (g z); z end ") (num-val 44))
+(check-equal? (run "let swap = proc (x) proc (y) let temp = x
+                  in begin
+                      set x = y;
+                      set y = temp
+                     end
+      in letref a = 33
+         in letmutable b = 44
+            in begin
+                ((swap a) b);
+-(a,b) end") (num-val 11))
+(check-equal? (run "letref b = 3
+in let p = proc (x) proc(y)
+                  begin
+                   set x = 4;
+                   y
+                  end
+         in ((p b) b)" ) (num-val 4))
