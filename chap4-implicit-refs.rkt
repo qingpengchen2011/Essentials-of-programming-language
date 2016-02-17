@@ -376,6 +376,16 @@
                    (eopl:error 'arrayref "index out of range with array length:~s, but try to index at ~s" len index)
                    (let ((target-ref (ref-val (+ (expval->ref start-ref) index))))
                      (deref target-ref)))))))
+
+(define arrayref-oprand
+  (lambda (ary index)
+    (cases array ary
+      (empty-array () (eopl:error 'arrayref-oprand "try to index an empty array with index:~s" index))
+      (a-array (start-ref len)
+               (if (>= index len)
+                   (eopl:error 'arrayref-oprand "index out of range with array length:~s, but try to index at ~s" len index)
+                   (ref-val (+ (expval->ref start-ref) index)))))))
+          
                   
 (define arrayset
   (lambda (ary index val)
@@ -484,6 +494,10 @@
                                   (if (reference? ref)
                                       ref
                                       (newref ref)))) ;;forward compatible. if the var is a expval, introduce a newref to it.
+                 (arrayref-exp (exp1 exp2)
+                               (let ((arrayval (value-of exp1 env))
+                                     (indexval (value-of exp2 env)))
+                                 (arrayref-oprand (expval->array arrayval) (expval->num indexval))))
                  (else (newref (value-of rand env)))))
              (evaluate-call-exp-rands (cdr rands) env)))))
                     
@@ -922,3 +936,20 @@ in let p = proc (x) proc(y)
                    y
                   end
          in ((p b) b)" ) (num-val 4))
+
+(run "let
+        swap = proc (x) proc (y) let temp = x
+                  in begin
+                      set x = y;
+                      set y = temp
+                     end
+        ary = newarray(2,100)
+        in begin arrayset(ary,0,1);
+                 arrayset(ary,1,9);
+                 print(arrayref(ary,0));
+                 print(arrayref(ary,1));
+                 ((swap arrayref(ary,0))  arrayref(ary,1));
+                 print(arrayref(ary,0));
+                 print(arrayref(ary,1))
+                 
+ end ")
