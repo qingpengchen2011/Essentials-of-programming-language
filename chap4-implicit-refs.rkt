@@ -27,6 +27,7 @@
     (expression ("letmutable" (arbno identifier "=" expression) "in" expression) letmutable-exp);;letmutable的语意是introduce一个reference; mutable. 当其作为函数参数时，可在函数内被修改且修改反应到原变量.
     (expression ("let*" (arbno identifier "=" expression) "in" expression) let*-exp)
     (expression ("letref" (arbno identifier "=" expression) "in" expression) letref-exp) ;;letref语意同letmutable
+    (expression ("lazylet" (arbno identifier "=" expression) "in" expression) lazylet-exp) 
     (expression ("emptylist") emptylist-exp)
     (expression ("cons" "(" expression "," expression ")") cons-exp)
     (expression ("car" "(" expression ")") car-exp)
@@ -122,6 +123,7 @@
   (letmutable-exp (vars (list-of identifier?)) (exps (list-of expression?)) (body expression?))
   (letref-exp (vars (list-of identifier?)) (exps (list-of expression?)) (body expression?))
   (let*-exp (vars (list-of identifier?)) (exps (list-of expression?)) (body expression?))
+  (lazylet-exp (vars (list-of identifier?)) (exps (list-of expression?)) (body expression?))
   (emptylist-exp)
   (cons-exp (exp1 expression?) (exp2 expression?))
   (car-exp (exp expression?))
@@ -189,6 +191,9 @@
   (a-array (start-ref reference?) (length integer?))
   (empty-array )
   )
+
+(define-datatype thunk thunk?
+  (a-thunk (exp expression?) (env environment?)))
 
 (define reference?
   (lambda (val)
@@ -272,7 +277,7 @@
                             (extend-env 'x (newref (num-val 10))
                                         (empty-env))))))
 (define the-store #f)
-(define slots-size 10240)
+(define slots-size 20480)
 (define latest-avaiable-slot #f)
 
 (define empty-store
@@ -464,6 +469,18 @@
                               argenv
                               (extend-env (car vars) (value-of (car exps) argenv) finalenv)))))
 
+     (define evaluate-lazylet-exp
+      (lambda (vars exps body-exp argenv finalenv)
+        (if (null? vars)
+            (value-of body-exp finalenv)
+            (evaluate-lazylet-exp (cdr vars)
+                              (cdr exps)
+                              body-exp
+                              argenv
+                              (extend-env (car vars) (newref (a-thunk (car exps) argenv)) finalenv)))))
+
+   
+
     (define evaluate-letmutable-exp
       (lambda (vars exps body-exp argenv finalenv)
         (if (null? vars)
@@ -498,7 +515,11 @@
                                (let ((arrayval (value-of exp1 env))
                                      (indexval (value-of exp2 env)))
                                  (arrayref-oprand (expval->array arrayval) (expval->num indexval))))
-                 (else (newref (value-of rand env)))))
+                 (const-exp (n) (newref (num-val n)))
+
+                 (proc-exp (vars body) (newref (proc-val (procedure vars body env))))
+                 
+                 (else (newref (a-thunk rand env))))) ;;for lazy evaluate.
              (evaluate-call-exp-rands (cdr rands) env)))))
                     
     (define evaluate-begin-subexps
@@ -506,14 +527,25 @@
         (if (null? subexps)
             pre-val
             (let ((val (value-of (car subexps) env)))
-              (evaluate-begin-subexps (cdr subexps) val env)))))              
+              (evaluate-begin-subexps (cdr subexps) val env)))))
+
+    (define evaluate-thunk
+      (lambda (thk)
+        (cases thunk thk
+          (a-thunk (exp env)
+                   (value-of exp env)))))
 
     (cases expression exp
       (const-exp (num) (num-val num))
       (minus-exp (exp) (num-val (- 0 (expval->num (value-of exp env)))))
       (var-exp (var) (let ((stored-val (apply-env env var)))
                        (if (reference? stored-val)
-                           (deref stored-val)
+                           (let ((val (deref stored-val)))
+                             (if (thunk? val)
+                                 (let ((thunk-val (evaluate-thunk val)))
+                                   (begin (setref! stored-val thunk-val)  ;;memorize the thunk value.
+                                          thunk-val))
+                                 val))
                            stored-val)))
                
       (diff-exp (exp1 exp2)
@@ -547,7 +579,10 @@
 
       (let*-exp (vars exps body)
                 (evaluate-let*-exp vars exps body env))
-      
+
+      (lazylet-exp (vars exps body)
+               (evaluate-lazylet-exp vars exps body env env))
+            
       (emptylist-exp () (list-val '()))
       (car-exp (exp)
                (let ((val (value-of exp env)))
@@ -758,6 +793,8 @@ then 0
 else -(((maker maker) -(x,1)), minus(4))
 in let timesfour = proc (x) ((makemult makemult) x) in (timesfour 3)") (num-val 12))
 
+
+#|
 (check-equal? (run "let makemultn = proc (n)
              proc(maker) proc (x)
               if zero?(x)
@@ -772,6 +809,7 @@ in let timesfour = proc (x) ((makemult makemult) x) in (timesfour 3)") (num-val 
                                     then 1
                                     else ((timesn (factfunc -(n,1) factfunc)) n)
                                in (fact 10 fact)") (num-val 3628800))
+|#
                              
 (define fact
   (lambda (n)
@@ -953,3 +991,25 @@ in let p = proc (x) proc(y)
                  print(arrayref(ary,1))
                  
  end ")
+
+;; test for lazy evaluation
+(check-equal? (run " letrec infiniteloop (x) = (infiniteloop +(x,1)) in
+           let f = proc (z) 11 in
+            (f (infiniteloop 0))") (num-val 11))
+
+;;exercise4.38
+(check-equal? (run "
+      let makerec = proc (f)
+                     let d = proc (x) (f (x x))
+in (f (d d)) in let maketimes4 = proc (f)
+                           proc (x)
+                            if zero?(x)
+                            then 0
+                            else +((f -(x,1)), 4)
+in let times4 = (makerec maketimes4) in (times4 3)") (num-val 12))
+
+;;exercise4.42
+(check-equal? (run "let y = 100 in
+                     lazylet x = begin print(-(y,1)); +(y,1) end
+                       in begin print(y); +(x,1) end") (num-val 102))
+                       
