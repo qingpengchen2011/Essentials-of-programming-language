@@ -169,19 +169,180 @@
   )
 
 (define apply-procedure
-  (lambda (proc1 args env)
+  (lambda (proc1 args env cont)
     (cases proc proc1
       (procedure (vars body saved-env)
-                 (value-of body (extend-multivars-env vars args saved-env)))
+                 (value-of/k body (extend-multivars-env vars args saved-env) cont))
       (dynamic-binding-procedure (vars body)
-                 (value-of body (extend-multivars-env vars args env))) ;;dynamic binding, evaluate the body with current environment.
+                 (value-of/k body (extend-multivars-env vars args env) cont)) ;;dynamic binding, evaluate the body with current environment.
       (trace-procedure (vars body saved-env)
                        (begin (eopl:printf "entering func")
                               (newline)
-                              (let ((r (value-of body (extend-multivars-env vars args saved-env))))
-                                (begin (eopl:printf "exiting func")
+                              (value-of/k body (extend-multivars-env vars args saved-env) (trace-procedure-cont cont)))))))
+                             
+
+(define-datatype continuation continuation?
+  (end-cont)
+  (zero-cont (cont continuation?))
+  (binary-operation-op1-cont (op (lambda (o) #t))
+                        (exp2 expression?)
+                        (env environment?)
+                        (cont continuation?))
+  (binary-operation-op2-cont (op (lambda (o) #t))
+                        (val1 expval?)
+                        (env environment?)
+                        (cont continuation?))
+  (compare-operation-op1-cont (op (lambda (o) #t))
+                        (exp2 expression?)
+                        (env environment?)
+                        (cont continuation?))
+  (compare-operation-op2-cont (op (lambda (o) #t))
+                        (val1 expval?)
+                        (env environment?)
+                        (cont continuation?))
+
+  (zero-bool-exp-cont (cont continuation?))
+  (null-bool-exp-cont (cont continuation?))
+
+  (if-exp-cont (exp2 expression?) (exp3 expression?) (env environment?) (cont continuation?))
+
+  (let-binding-cont (var identifier?) (vars (list-of identifier?)) (exps (list-of expression?)) (body expression?) (argenv environment?) (finalenv environment?) (cont continuation?))
+
+  (let*-binding-cont (var identifier?) (vars (list-of identifier?)) (exps (list-of expression?)) (body expression?) (env environment?) (cont continuation?))
+
+  (car-exp-cont (cont continuation?))
+  (cdr-exp-cont (cont continuation?))
+  (cons-exp-op1-cont (exp2 expression?) (env environment?) (cont continuation?))
+  (cons-exp-op2-cont (val1 expval?) (cont continuation?))
+
+  (evaluate-list-exp-cont (listval expval?) (exps (list-of expression?)) (env environment?) (cont continuation?))
+
+  (cond-exp-cont (con expression?) (preds (list-of boolexpression?)) (cons (list-of expression?)) (env environment?) (cont continuation?))
+  (print-exp-cont (cont continuation?))
+  (unpack-exp-cont (vars (list-of identifier?)) (body expression?) (env environment?) (cont continuation?))
+
+  (rator-cont (exps (list-of expression?)) (env environment?) (cont continuation?))
+
+  (evaluate-call-exp-rands-cont (proc expval?) (argvals (list-of expval?)) (rands (list-of expression?)) (env environment?) (cont continuation?))
+
+  (begin-exp-cont (subexps (list-of expression?)) (env environment?) (cont continuation?))
+
+  (newref-exp-cont (cont continuation?))
+
+  (deref-exp-cont (cont continuation?))
+
+
+  (setref-exp-op1-cont (exp2 expression?) (env environment?) (cont continuation?))
+  (setref-exp-op2-cont (val1 expval?) (cont continuation?))
+
+  (trace-procedure-cont (cont continuation?))
+  
+  )
+
+(define apply-cont
+  (lambda (cont val)
+    (cases continuation cont
+      (end-cont ()
+                ;;(eopl:error "End of Computation.~%" val))
+                val)
+      (zero-cont (cont) (apply-cont cont (num-val (- 0 (expval->num val)))))
+      (binary-operation-op1-cont (op exp2 env cont)
+                                (value-of/k exp2 env (binary-operation-op2-cont op val env cont)))
+      
+      (binary-operation-op2-cont (op val1 env cont)
+                            (apply-cont cont (num-val (op (expval->num val1) (expval->num val)))))
+      
+      (compare-operation-op1-cont (compare-op exp2 env cont)
+                                  (value-of/k exp2 env (compare-operation-op2-cont compare-op val env cont)))
+      
+      (compare-operation-op2-cont (compare-op val1 env cont)
+                                  (apply-cont cont (bool-val (compare-op (expval->num val1) (expval->num val)))))
+
+      (zero-bool-exp-cont (cont)
+                          (apply-cont cont (bool-val (zero? (expval->num val)))))
+
+      (null-bool-exp-cont (cont)
+                          (apply-cont cont (bool-val (null? (expval->list val)))))
+
+      (if-exp-cont (exp2 exp3 env cont)
+                   (if (expval->bool val)
+                       (value-of/k exp2 env cont)
+                       (value-of/k exp3 env cont)))
+
+      (let-binding-cont (var vars exps body argenv finalenv cont)
+                        (evaluate-let-exp/k
+                         vars
+                         exps
+                         body
+                         argenv
+                         (extend-env var val finalenv)
+                         cont))
+      (let*-binding-cont (var vars exps body env cont)
+                         (evaluate-let*-exp/k
+                          vars
+                          exps
+                          body
+                         (extend-env var val env)
+                         cont))
+      (car-exp-cont (cont)
+                    (apply-cont cont (car (expval->list val))))
+
+      (cdr-exp-cont (cont)
+                    (apply-cont cont (list-val (cdr (expval->list val)))))
+      (cons-exp-op1-cont (exp2 env cont)
+                         (value-of/k exp2 env (cons-exp-op2-cont val cont)))
+      (cons-exp-op2-cont (val1 cont)
+                         (apply-cont cont (list-val (cons val1 (expval->list val)))))
+
+      (evaluate-list-exp-cont (listval exps env cont)
+                              (evaluate-list-exp/k (list-val (cons val (expval->list listval))) exps env cont))
+
+      (cond-exp-cont (con preds cons env cont)
+                     (if (expval->bool val)
+                         (value-of/k con env cont)
+                         (evaluate-cond-exp/k preds cons env cont)))
+      (print-exp-cont (cont)
+                      (begin (eopl:printf "~s" val) (num-val 1)))
+
+      (unpack-exp-cont (vars body env cont)
+                       (let ((vals (expval->list val)))
+                         (if (not (eqv? (length vars) (length vals)))
+                             (eopl:error 'unpack-exp "number of vars do not match the list element length in expression:~s" exp)
+                        (value-of/k body (extend-multivars-env vars vals env) cont))))
+
+      (rator-cont (rands env cont)
+                  (evaluate-call-exp-rands/k val '() (reverse rands) env cont))
+
+      (evaluate-call-exp-rands-cont (proc argvals rands env cont)
+                                    (evaluate-call-exp-rands/k proc (cons val argvals) rands env cont))
+
+      (begin-exp-cont (subexps env cont)
+                      (evaluate-begin-subexps/k subexps val env cont))
+
+      (newref-exp-cont (cont)
+                       (apply-cont cont (newref val)))
+
+      (deref-exp-cont (cont)
+                      (apply-cont cont (deref val)))
+
+      (setref-exp-op1-cont (exp2 env cont)
+                           (value-of/k exp2 env (setref-exp-op2-cont val cont)))
+
+      (setref-exp-op2-cont (refval cont)
+                           (begin (setref! refval val)
+                                  (apply-cont cont val)))
+
+      (trace-procedure-cont (cont)
+                            (begin (eopl:printf "exiting func")
                                        (newline)
-                                       r)))))))
+                                       (apply-cont cont val)))
+                            
+
+      
+                  
+
+                        
+      )))
 
 (define expval->num
   (lambda (val)
@@ -253,79 +414,61 @@
     (cases program prog
       (a-program (exp)
                  (begin (initialize-store!)
-                 (value-of exp (init-env)))))))
+                 (value-of/k exp (init-env) (end-cont)))))))
 
-(define value-of-bool-exp
-      (lambda (exp env)
+(define value-of-bool-exp/k
+      (lambda (exp env cont)
         (define compare-operation
-          (lambda (op exp1 exp2 env)
-            (let ((val1 (value-of exp1 env))
-                  (val2 (value-of exp2 env)))
-              (bool-val (op (expval->num val1) (expval->num val2))))))
+          (lambda (op exp1 exp2 env cont)
+            (value-of/k exp1 env (compare-operation-op1-cont op exp2 env cont))))
+        
         (cases boolexpression exp
           (equal?-bool-exp (exp1 exp2)
-                           (compare-operation eqv? exp1 exp2 env))
+                           (compare-operation eqv? exp1 exp2 env cont))
           (greater?-bool-exp (exp1 exp2)
-                             (compare-operation > exp1 exp2 env))
+                             (compare-operation > exp1 exp2 env cont))
           (less?-bool-exp (exp1 exp2)
-                          (compare-operation < exp1 exp2 env))
+                          (compare-operation < exp1 exp2 env cont))
           (zero?-bool-exp (exp)
-                          (bool-val (zero? (expval->num (value-of exp env)))))
+                          (value-of/k exp env (zero-bool-exp-cont cont)))
           (null?-bool-exp (exp)
-                          (bool-val (null? (expval->list (value-of exp env))))))))
+                          (value-of/k exp env (null-bool-exp-cont cont))))))
 
-(define value-of
-  (lambda (exp env)
-    (define arithmetic-operation
-      (lambda (op exp1 exp2 env)
-        (let ((val1 (value-of exp1 env))
-              (val2 (value-of exp2 env)))
-          (num-val (op (expval->num val1) (expval->num val2))))))
-    (define evaluate-list-exp
-      (lambda (exps env)
+    (define evaluate-let-exp/k
+      (lambda (vars exps body-exp argenv finalenv cont)
+        (if (null? vars)
+            (value-of/k body-exp finalenv cont)
+            (value-of/k (car exps) argenv (let-binding-cont (car vars) (cdr vars) (cdr exps) body-exp argenv finalenv cont)))))
+
+    (define evaluate-let*-exp/k
+      (lambda (vars exps body-exp env cont)
+        (if (null? vars)
+            (value-of/k body-exp env cont)
+            (value-of/k (car exps) env (let*-binding-cont (car vars) (cdr vars) (cdr exps) body-exp env cont)))))
+
+    (define evaluate-list-exp/k
+      (lambda (listval exps env cont)
         (if (null? exps)
-            (list-val '())
-            (list-val (cons (value-of (car exps) env)
-                            (expval->list (evaluate-list-exp (cdr exps) env)))))))
-    (define evaluate-cond-exp
-      (lambda (preds cons env)
+            (apply-cont cont listval)
+            (value-of/k (car exps) env (evaluate-list-exp-cont listval (cdr exps) env cont)))))
+
+    (define evaluate-cond-exp/k
+      (lambda (preds cons env cont)
         (if (null? preds)
             (eopl:error 'value-of "none of the cond expression's test condition success")
-            (if (expval->bool (value-of-bool-exp (car preds) env))
-                (value-of (car cons) env)
-                (evaluate-cond-exp (cdr preds) (cdr cons) env)))))
+            (value-of-bool-exp/k (car preds) env (cond-exp-cont (car cons) (cdr preds) (cdr cons) env cont)))))
 
-    (define evaluate-let-exp
-      (lambda (vars exps body-exp argenv finalenv)
-        (if (null? vars)
-            (value-of body-exp finalenv)
-            (evaluate-let-exp (cdr vars)
-                              (cdr exps)
-                              body-exp
-                              argenv
-                              (extend-env (car vars) (value-of (car exps) argenv) finalenv)))))
-    (define evaluate-let*-exp
-      (lambda (vars exps body-exp env)
-        (if (null? vars)
-            (value-of body-exp env)
-            (evaluate-let*-exp (cdr vars)
-                               (cdr exps)
-                               body-exp
-                               (extend-env (car vars) (value-of (car exps) env) env)))))
-
-    (define evaluate-call-exp-rands
-      (lambda (rands env)
+    (define evaluate-call-exp-rands/k
+      (lambda (procval argvals rands env cont)
         (if (null? rands)
-            '()
-            (cons (value-of (car rands) env)
-                  (evaluate-call-exp-rands (cdr rands) env)))))
+            (apply-procedure (expval->proc procval) argvals env cont)
+            (value-of/k (car rands) env (evaluate-call-exp-rands-cont procval argvals (cdr rands) env cont)))))
 
-    (define evaluate-begin-subexps
-      (lambda (subexps pre-val env)
+    (define evaluate-begin-subexps/k 
+      (lambda (subexps pre-val env cont)
         (if (null? subexps)
-            pre-val
-            (let ((val (value-of (car subexps) env)))
-              (evaluate-begin-subexps (cdr subexps) val env)))))
+            (apply-cont cont pre-val)
+            (value-of/k (car subexps) env (begin-exp-cont (cdr subexps) env cont)))))
 
     (define newref
       (lambda (expval)
@@ -343,90 +486,87 @@
       (lambda (refval expval)
         (let ((i (expval->ref refval)))
           (begin (vector-set! the-store i expval)))))
-              
+
+(define value-of/k
+  (lambda (exp env cont)
+    (define arithmetic-operation
+      (lambda (op exp1 exp2 env cont)
+        (value-of/k exp1 env (binary-operation-op1-cont op exp2 env cont))))
 
     (cases expression exp
-      (const-exp (num) (num-val num))
-      (minus-exp (exp) (num-val (- 0 (expval->num (value-of exp env)))))
-      (var-exp (var) (apply-env env var))
+      (const-exp (num) (apply-cont cont (num-val num)))
+      (minus-exp (exp) (value-of/k exp env (zero-cont cont)))
+      (var-exp (var) (apply-cont cont (apply-env env var)))
       (diff-exp (exp1 exp2)
-                (arithmetic-operation - exp1 exp2 env))
+                (arithmetic-operation - exp1 exp2 env cont))
       
       (add-exp (exp1 exp2)
-               (arithmetic-operation + exp1 exp2 env))
+               (arithmetic-operation + exp1 exp2 env cont))
      
       (multiply-exp (exp1 exp2)
-                    (arithmetic-operation * exp1 exp2 env))
+                    (arithmetic-operation * exp1 exp2 env cont))
       
       (quotient-exp (exp1 exp2)
-                    (arithmetic-operation remainder exp1 exp2 env))
+                    (arithmetic-operation remainder exp1 exp2 env cont))
       
       (if-bool-exp (boolexp exp2 exp3)
-             (if (expval->bool (value-of-bool-exp boolexp env))
-                 (value-of exp2 env)
-                 (value-of exp3 env)))
+             (value-of-bool-exp/k boolexp env (if-exp-cont exp2 exp3 env cont)))
 
       (bool-exp (exp)
-                (value-of-bool-exp exp env))
+                (value-of-bool-exp/k exp env cont))
               
       (let-exp (vars exps body)
-               (evaluate-let-exp vars exps body env env))
+               (evaluate-let-exp/k vars exps body env env cont))
 
       (let*-exp (vars exps body)
-                (evaluate-let*-exp vars exps body env))
+                (evaluate-let*-exp/k vars exps body env cont))
       
-      (emptylist-exp () (list-val '()))
+      (emptylist-exp () (apply-cont cont (list-val '())))
+      
       (car-exp (exp)
-               (let ((val (value-of exp env)))
-                 (car (expval->list val))))
+               (value-of/k exp env (car-exp-cont cont)))
+              
       (cdr-exp (exp)
-               (let ((val (value-of exp env)))
-                 (list-val (cdr (expval->list val)))))
+               (value-of/k exp env (cdr-exp-cont cont)))
       
       (cons-exp (exp1 exp2)
-                (let ((val1 (value-of exp1 env))
-                      (val2 (value-of exp2 env)))
-                  (list-val (cons val1 (expval->list val2)))))
+                (value-of/k exp1 env (cons-exp-op1-cont exp2 env cont)))
+              
       (list-exp (exps)
-                (evaluate-list-exp exps env))
+                (evaluate-list-exp/k (list-val '()) (reverse exps) env cont))
       (cond-exp (preds consequences)
-                (evaluate-cond-exp preds consequences env))
+                (evaluate-cond-exp/k preds consequences env cont))
       (print-exp (exp)
-                 (begin (eopl:printf "~s" (value-of exp env)) (num-val 1)))
+                 (value-of/k exp env (print-exp-cont cont)))
       (unpack-exp (vars exp1 body)
-                  (let ((vals (expval->list (value-of exp1 env))))
-                    (if (not (eqv? (length vars) (length vals)))
-                        (eopl:error 'unpack-exp "number of vars do not match the list element length in expression:~s" exp)
-                        (value-of body (extend-multivars-env vars vals env)))))
+                  (value-of/k exp1 env (unpack-exp-cont vars body env cont)))
+              
       (proc-exp (vars body)
-                (proc-val (procedure vars body env)))
+                (apply-cont cont (proc-val (procedure vars body env))))
       (call-exp (rator rands)
-                (apply-procedure (expval->proc (value-of rator env)) (evaluate-call-exp-rands rands env) env))
+                (value-of/k rator env (rator-cont rands env cont)))
+
       (letproc-exp (proc-name vars proc-body body)
-                   (value-of body (extend-env proc-name (proc-val (procedure vars proc-body env)) env)))
+                   (value-of/k body (extend-env proc-name (proc-val (procedure vars proc-body env)) env) cont))
       (traceproc-exp (vars body)
-                     (proc-val (trace-procedure vars body env)))
+                     (apply-cont cont (proc-val (trace-procedure vars body env))))
       (dynamic-binding-proc-exp (vars body)
-                                (proc-val (dynamic-binding-procedure vars body)))
+                                (apply-cont cont (proc-val (dynamic-binding-procedure vars body))))
       (letrec-exp (p-names procs-vars p-bodys letrec-body)
-                  (value-of letrec-body (extend-env-rec p-names procs-vars p-bodys env)))
+                  (value-of/k letrec-body (extend-env-rec p-names procs-vars p-bodys env) cont))
 
       (begin-exp (exp1 subexps)
-                 (let ((val (value-of exp1 env)))
-                   (evaluate-begin-subexps subexps val env)))
+                 (value-of/k exp1 env (begin-exp-cont subexps env cont)))
 
       (newref-exp (exp)
-                  (let ((val (value-of exp env)))
-                    (newref val)))
+                  (value-of/k exp env (newref-exp-cont cont)))
 
       (deref-exp (exp)
-                 (deref (value-of exp env)))
+                 (value-of/k exp env (deref-exp-cont cont)))
 
       (setref-exp (exp1 exp2)
-                  (let ((refval (value-of exp1 env))
-                        (expval (value-of exp2 env)))
-                    (begin (setref! refval expval))
-                           expval))
+                  (value-of/k exp1 env (setref-exp-op1-cont exp2 env cont)))
+                   
       
       ;;lexical addressing; any occurence of the nameless expression we'll report an error
       (else
