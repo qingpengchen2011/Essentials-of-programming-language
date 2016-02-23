@@ -170,7 +170,6 @@
 
 (define apply-procedure
   (lambda (proc1 args env cont)
-    (lambda ()
     (cases proc proc1
       (procedure (vars body saved-env)
                  (value-of/k body (extend-multivars-env vars args saved-env) cont))
@@ -179,7 +178,7 @@
       (trace-procedure (vars body saved-env)
                        (begin (eopl:printf "entering func")
                               (newline)
-                              (value-of/k body (extend-multivars-env vars args saved-env) (trace-procedure-cont cont))))))))
+                              (value-of/k body (extend-multivars-env vars args saved-env) (trace-procedure-cont cont)))))))
                              
 
 (define-datatype continuation continuation?
@@ -468,7 +467,8 @@
     (define evaluate-call-exp-rands/k
       (lambda (procval argvals rands env cont)
         (if (null? rands)
-            (apply-procedure (expval->proc procval) argvals env cont)
+            (lambda () 
+            (apply-procedure (expval->proc procval) argvals env cont))
             (value-of/k (car rands) env (evaluate-call-exp-rands-cont procval argvals (cdr rands) env cont)))))
 
     (define evaluate-begin-subexps/k 
