@@ -43,6 +43,8 @@
     (expression ("newref" "(" expression ")") newref-exp)
     (expression ("deref" "(" expression ")") deref-exp)
     (expression ("setref" "(" expression "," expression ")") setref-exp)
+    (expression ("try" expression "catch" "(" identifier ")" expression) try-exp)
+    (expression ("raise" expression) raise-exp)
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
     (boolexpression ("zero?" "(" expression ")") zero?-bool-exp)
@@ -127,6 +129,8 @@
   (newref-exp (exp expression?))
   (deref-exp (exp expression?))
   (setref-exp (exp1 expression?) (exp2 expression?))
+  (try-exp (exp1 expression?) (var identifier?) (handler-exp expression?))
+  (raise-exp (exp expression?))
 
   ;;used for lexical addressing
   (nameless-var-exp (index integer?))
@@ -236,6 +240,9 @@
   (setref-exp-op2-cont (val1 expval?) (cont continuation?))
 
   (trace-procedure-cont (cont continuation?))
+
+  (try-exp-cont (var identifier?) (handler-exp expression?) (env environment?) (cont continuation?))
+  (raise-exp-cont (cont continuation?))
   
   )
 
@@ -337,8 +344,53 @@
                             (begin (eopl:printf "exiting func")
                                        (newline)
                                        (apply-cont cont val)))
+
+      (try-exp-cont (var handler-exp env cont)
+                    (apply-cont cont val))
+
+      (raise-exp-cont (cont)
+                      (apply-handler cont val))
                         
       ))))
+
+(define apply-handler
+  (lambda (cont1 val)
+    (define report-uncaught-exception
+      (lambda ()
+              (eopl:error 'apply-handler "can not find any handler for exception")))
+    
+    (cases continuation cont1
+      (try-exp-cont (var handler-exp env cont)
+                    (value-of/k handler-exp (extend-env var val env) cont))
+      (raise-exp-cont (cont) (apply-handler cont val)) ;;need reconsideration!
+      (end-cont () (report-uncaught-exception))
+      (zero-cont (cont) (apply-handler cont val))
+      (binary-operation-op1-cont (op exp2 env cont) (apply-handler cont val))
+      (binary-operation-op2-cont (op val1 env cont) (apply-handler cont val))
+      (compare-operation-op1-cont (compare-op exp2 env cont) (apply-handler cont val))
+      (compare-operation-op2-cont (compare-op val1 env cont) (apply-handler cont val))
+      (zero-bool-exp-cont (cont) (apply-handler cont val))
+      (null-bool-exp-cont (cont) (apply-handler cont val))
+      (if-exp-cont (exp2 exp3 env cont) (apply-handler cont val))
+      (let-binding-cont (var vars exps body argenv finalenv cont) (apply-handler cont val))
+      (let*-binding-cont (var vars exps body env cont) (apply-handler cont val))
+      (car-exp-cont (cont) (apply-handler cont val))
+      (cdr-exp-cont (cont) (apply-handler cont val))
+      (cons-exp-op1-cont (exp2 env cont) (apply-handler cont val))
+      (cons-exp-op2-cont (val1 cont) (apply-handler cont val))
+      (evaluate-list-exp-cont (listval exps env cont) (apply-handler cont val))
+      (cond-exp-cont (con preds cons env cont) (apply-handler cont val))
+      (print-exp-cont (cont) (apply-handler cont val))
+      (unpack-exp-cont (vars body env cont) (apply-handler cont val))
+      (rator-cont (rands env cont) (apply-handler cont val))
+      (evaluate-call-exp-rands-cont (proc argvals rands env cont) (apply-handler cont val))
+      (begin-exp-cont (subexps env cont) (apply-handler cont val))
+      (newref-exp-cont (cont) (apply-handler cont val))
+      (deref-exp-cont (cont) (apply-handler cont val))
+      (setref-exp-op1-cont (exp2 env cont) (apply-handler cont val))
+      (setref-exp-op2-cont (refval cont) (apply-handler cont val))
+      (trace-procedure-cont (cont) (apply-handler cont val)))))
+
 
 (define expval->num
   (lambda (val)
@@ -568,6 +620,13 @@
 
       (setref-exp (exp1 exp2)
                   (value-of/k exp1 env (setref-exp-op1-cont exp2 env cont)))
+
+      (try-exp (exp1 var handler-exp)
+               (value-of/k exp1 env (try-exp-cont var handler-exp env cont)))
+
+      (raise-exp (exp1)
+                 (value-of/k exp1 env (raise-exp-cont cont)))
+ 
                    
       
       ;;lexical addressing; any occurence of the nameless expression we'll report an error
@@ -786,3 +845,23 @@ setref(counter, +(deref(counter), 1)); deref(counter)
 
 ;;;section 5.3 imperative language is too easy to understand .
 
+;;test for Exception
+(check-equal? (run "let index
+           = proc (n)
+              letrec inner (lst)
+               = if null?(lst)
+                 then raise 99
+                 else if zero?(-(car(lst),n))
+                      then 0
+else +((inner cdr(lst)), 1) in proc (lst)
+try (inner lst) catch (x) x in ((index 5) list(2, 3))") (num-val 99))
+
+(check-equal? (run "let index
+           = proc (n)
+              letrec inner (lst)
+               = if null?(lst)
+                 then raise 99
+                 else if zero?(-(car(lst),n))
+                      then 0
+else +((inner cdr(lst)), 1) in proc (lst)
+try (inner lst) catch (x) x in ((index 5) list(2, 3, 5))") (num-val 2))
