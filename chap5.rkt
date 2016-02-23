@@ -783,3 +783,6 @@ setref(counter, +(deref(counter), 1)); deref(counter)
       in let a = (g 11)
          in let b = (g 11)
             in -(a,b)") (num-val -1))
+
+;;;section 5.3 imperative language is too easy to understand .
+
