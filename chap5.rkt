@@ -170,6 +170,7 @@
 
 (define apply-procedure
   (lambda (proc1 args env cont)
+    (lambda ()
     (cases proc proc1
       (procedure (vars body saved-env)
                  (value-of/k body (extend-multivars-env vars args saved-env) cont))
@@ -178,7 +179,7 @@
       (trace-procedure (vars body saved-env)
                        (begin (eopl:printf "entering func")
                               (newline)
-                              (value-of/k body (extend-multivars-env vars args saved-env) (trace-procedure-cont cont)))))))
+                              (value-of/k body (extend-multivars-env vars args saved-env) (trace-procedure-cont cont))))))))
                              
 
 (define-datatype continuation continuation?
@@ -409,12 +410,18 @@
   (lambda ()
     (set! latest-avaiable-slot (+ latest-avaiable-slot 1))))
 
+(define trampoline
+  (lambda (bounce)
+    (if (expval? bounce)
+        bounce
+        (trampoline (bounce)))))
+
 (define value-of-program
   (lambda (prog)
     (cases program prog
       (a-program (exp)
                  (begin (initialize-store!)
-                 (value-of/k exp (init-env) (end-cont)))))))
+                 (trampoline (value-of/k exp (init-env) (end-cont))))))))
 
 (define value-of-bool-exp/k
       (lambda (exp env cont)
@@ -576,6 +583,8 @@
 
 (define scan&parse
     (sllgen:make-string-parser lexical-spec grammer-spec))
+
+
 
 (define run
   (lambda (string)
