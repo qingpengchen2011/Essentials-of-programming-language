@@ -349,9 +349,12 @@
                     (apply-cont cont val))
 
       (raise-exp-cont (cont)
-                      (apply-handler cont val))
+                      (handler-exception cont val))
                         
       ))))
+
+(define handler-exception
+  (lambda (o-cont val)
 
 (define apply-handler
   (lambda (cont1 val)
@@ -361,7 +364,7 @@
     
     (cases continuation cont1
       (try-exp-cont (var handler-exp env cont)
-                    (value-of/k handler-exp (extend-env var val env) cont))
+                    (value-of/k handler-exp (extend-env var val env) o-cont))
       (raise-exp-cont (cont) (apply-handler cont val)) ;;need reconsideration!
       (end-cont () (report-uncaught-exception))
       (zero-cont (cont) (apply-handler cont val))
@@ -390,6 +393,7 @@
       (setref-exp-op1-cont (exp2 env cont) (apply-handler cont val))
       (setref-exp-op2-cont (refval cont) (apply-handler cont val))
       (trace-procedure-cont (cont) (apply-handler cont val)))))
+    (apply-handler o-cont val)))
 
 
 (define expval->num
@@ -846,6 +850,7 @@ setref(counter, +(deref(counter), 1)); deref(counter)
 ;;;section 5.3 imperative language is too easy to understand .
 
 ;;test for Exception
+;(run "raise 100")
 (check-equal? (run "let index
            = proc (n)
               letrec inner (lst)
@@ -854,7 +859,7 @@ setref(counter, +(deref(counter), 1)); deref(counter)
                  else if zero?(-(car(lst),n))
                       then 0
 else +((inner cdr(lst)), 1) in proc (lst)
-try (inner lst) catch (x) x in ((index 5) list(2, 3))") (num-val 99))
+try (inner lst) catch (x) x in ((index 5) list(2, 3))") (num-val 101))
 
 (check-equal? (run "let index
            = proc (n)
@@ -865,3 +870,5 @@ try (inner lst) catch (x) x in ((index 5) list(2, 3))") (num-val 99))
                       then 0
 else +((inner cdr(lst)), 1) in proc (lst)
 try (inner lst) catch (x) x in ((index 5) list(2, 3, 5))") (num-val 2))
+
+(check-equal? (run "try +(1,raise 100) catch(x) 199") (num-val 200))
