@@ -241,6 +241,7 @@
 
 (define apply-cont
   (lambda (cont val)
+    (lambda ()
     (cases continuation cont
       (end-cont ()
                 ;;(eopl:error "End of Computation.~%" val))
@@ -336,13 +337,8 @@
                             (begin (eopl:printf "exiting func")
                                        (newline)
                                        (apply-cont cont val)))
-                            
-
-      
-                  
-
                         
-      )))
+      ))))
 
 (define expval->num
   (lambda (val)
@@ -467,8 +463,7 @@
     (define evaluate-call-exp-rands/k
       (lambda (procval argvals rands env cont)
         (if (null? rands)
-            (lambda () 
-            (apply-procedure (expval->proc procval) argvals env cont))
+            (apply-procedure (expval->proc procval) argvals env cont)
             (value-of/k (car rands) env (evaluate-call-exp-rands-cont procval argvals (cdr rands) env cont)))))
 
     (define evaluate-begin-subexps/k 
