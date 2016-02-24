@@ -1,9 +1,10 @@
 #lang eopl
-
 (require "./chap2.rkt")
 (require  "./chap2-from-section2.4-to-end.rkt")
 (require rackunit)
-
+(require racket/format)
+(require racket/string)
+;(require racket)
 
 (define lexical-spec
   '((whitespace (whitespace) skip)
@@ -159,6 +160,7 @@
   (list-val (list (list-of expval?)))
   (proc-val (proc proc?))
   (ref-val (n integer?))
+  (string-val (s string?))
   )
 
 (define-datatype proc proc?
@@ -183,6 +185,21 @@
                        (begin (eopl:printf "entering func")
                               (newline)
                               (value-of/k body (extend-multivars-env vars args saved-env) (trace-procedure-cont cont)))))))
+
+(define check-procedure-signature
+  (lambda (proc1 n)
+    (define check-match
+      (lambda (expect actual)
+        (list (= expect actual) expect actual)))
+    (cases proc proc1
+      (procedure (vars body saved-env)
+                 (check-match (length vars) n))
+      (dynamic-binding-procedure (vars body)
+                                 (check-match (length vars) n))
+      (trace-procedure (vars body saved-env)
+                       (check-match (length vars) n)))))
+                                 
+                 
                              
 
 (define-datatype continuation continuation?
@@ -319,7 +336,16 @@
                         (value-of/k body (extend-multivars-env vars vals env) cont))))
 
       (rator-cont (rands env cont)
-                  (evaluate-call-exp-rands/k val '() (reverse rands) env cont))
+                  (letrec ((r (check-procedure-signature (expval->proc val) (length rands)))
+                           (ok (car r))
+                           (expect (cadr r))
+                           (actual (caddr r)))
+                    (if ok
+                        (evaluate-call-exp-rands/k val '() (reverse rands) env cont)
+                      ;;else raise exception
+                        (handle-exception cont (string-val (string-append "Exception wrong number of arguments expect:" (~a expect) ",actual:"  (~a actual)))))))
+                        ;;(value-of/k (raise-exp (const-exp -100000)) env cont))))
+                        ;(eopl:error 'callfunc " a proce- dure is called with the wrong number of arguments expect:~s, actual:~s" expect actual))))
 
       (evaluate-call-exp-rands-cont (proc argvals rands env cont)
                                     (evaluate-call-exp-rands/k proc (cons val argvals) rands env cont))
@@ -349,18 +375,18 @@
                     (apply-cont cont val))
 
       (raise-exp-cont (cont)
-                      (handler-exception cont val))
+                      (handle-exception cont val))
                         
       ))))
 
-(define handler-exception
+(define handle-exception
   (lambda (o-cont val)
     (define apply-handler
       (lambda ()
 
         (define report-uncaught-exception
           (lambda ()
-            (eopl:error 'apply-handler "err: uncaught exception error: can not find any handler for exception")))
+            (eopl:error 'apply-handler "err: uncaught exception ~s " val )))
 
         (let ((try-cont (pop-from-exception-stack)))
           (if try-cont
@@ -852,7 +878,7 @@ setref(counter, +(deref(counter), 1)); deref(counter)
 ;;;section 5.3 imperative language is too easy to understand .
 
 ;;test for Exception
-(run "raise 100")
+;(run "raise 100")
 (check-equal? (run "let index
            = proc (n)
               letrec inner (lst)
@@ -874,3 +900,7 @@ else +((inner cdr(lst)), 1) in proc (lst)
 try (inner lst) catch (x) x in ((index 5) list(2, 3, 5))") (num-val 2))
 
 (check-equal? (run "try +(1,raise 100) catch(x) 199") (num-val 200))
+
+(run " try let f = proc(n,m)
+                +(n,m)
+         in (f 1 ) catch(x) x ")
