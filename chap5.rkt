@@ -47,6 +47,7 @@
     (expression ("setref" "(" expression "," expression ")") setref-exp)
     (expression ("try" expression "catch" "(" identifier ")" expression) try-exp)
     (expression ("raise" expression) raise-exp)
+    (expression ("resume" expression) resume-exp)
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
     (boolexpression ("zero?" "(" expression ")") zero?-bool-exp)
@@ -134,6 +135,8 @@
   (setref-exp (exp1 expression?) (exp2 expression?))
   (try-exp (exp1 expression?) (var identifier?) (handler-exp expression?))
   (raise-exp (exp expression?))
+  (resume-exp (exp expression?))
+
 
   ;;used for lexical addressing
   (nameless-var-exp (index integer?))
@@ -163,6 +166,7 @@
   (proc-val (proc proc?))
   (ref-val (n integer?))
   (string-val (s string?))
+  (cont-val (cont continuation?))
   )
 
 (define-datatype proc proc?
@@ -262,6 +266,8 @@
 
   (try-exp-cont (var identifier?) (handler-exp expression?) (env environment?) (cont continuation?))
   (raise-exp-cont (cont continuation?))
+  (resume-exp-cont (cont continuation?))
+
   
   )
 
@@ -380,6 +386,8 @@
 
       (raise-exp-cont (cont)
                       (handle-exception cont val))
+      (resume-exp-cont (cont)
+                       (apply-cont cont val))
                         
       ))))
 
@@ -395,7 +403,7 @@
         (let ((try-cont (pop-from-exception-stack)))
           (if try-cont
               (cases continuation try-cont
-                (try-exp-cont (var handler-exp env cont) (value-of/k handler-exp (extend-env var val env) o-cont))
+                (try-exp-cont (var handler-exp env cont) (value-of/k handler-exp (extend-env '$ (cont-val o-cont) (extend-env var val env)) cont))
                 (else (eopl:error 'apply-handler "not an try continuation: ~s" try-cont)))
               (report-uncaught-exception)))))
     (apply-handler)))
@@ -430,6 +438,12 @@
     (cases expval val
       (ref-val (n) n)
       (else (eopl:error 'expval->ref "not a ref value.~s" val)))))
+
+(define expval->cont
+  (lambda (val)
+    (cases expval val
+      (cont-val (n) n)
+      (else (eopl:error 'expval->cont "not a cont value.~s" val)))))
 
 
 (define init-env
@@ -666,7 +680,8 @@
       (raise-exp (exp1)
                  (value-of/k exp1 env (raise-exp-cont cont)))
  
-                   
+      (resume-exp (exp1)
+                  (value-of/k exp1 env (resume-exp-cont (expval->cont (apply-env env '$)))))
       
       ;;lexical addressing; any occurence of the nameless expression we'll report an error
       (else
@@ -894,7 +909,17 @@ setref(counter, +(deref(counter), 1)); deref(counter)
                  else if zero?(-(car(lst),n))
                       then 0
 else +((inner cdr(lst)), 1) in proc (lst)
-try (inner lst) catch (x) x in ((index 5) list(2, 3))") (num-val 101))
+try (inner lst) catch (x) resume x in ((index 5) list(2, 3))") (num-val 101))
+
+(check-equal? (run "let index
+           = proc (n)
+              letrec inner (lst)
+               = if null?(lst)
+                 then raise 99
+                 else if zero?(-(car(lst),n))
+                      then 0
+else +((inner cdr(lst)), 1) in proc (lst)
+try (inner lst) catch (x) x in ((index 5) list(2, 3))") (num-val 99))
 
 (check-equal? (run "let index
            = proc (n)
@@ -906,7 +931,9 @@ try (inner lst) catch (x) x in ((index 5) list(2, 3))") (num-val 101))
 else +((inner cdr(lst)), 1) in proc (lst)
 try (inner lst) catch (x) x in ((index 5) list(2, 3, 5))") (num-val 2))
 
-(check-equal? (run "try +(1,raise 100) catch(x) 199") (num-val 200))
+(check-equal? (run "try +(1,raise 100) catch(x) 199") (num-val 199))
+(check-equal? (run "try +(1,raise 100) catch(x) resume 199") (num-val 200))
+
 
 (run " try let f = proc(n,m)
                 +(n,m)
