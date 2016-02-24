@@ -355,45 +355,20 @@
 
 (define handler-exception
   (lambda (o-cont val)
-
-(define apply-handler
-  (lambda (cont1 val)
-    (define report-uncaught-exception
+    (define apply-handler
       (lambda ()
-              (eopl:error 'apply-handler "can not find any handler for exception")))
-    
-    (cases continuation cont1
-      (try-exp-cont (var handler-exp env cont)
-                    (value-of/k handler-exp (extend-env var val env) o-cont))
-      (raise-exp-cont (cont) (apply-handler cont val)) ;;need reconsideration!
-      (end-cont () (report-uncaught-exception))
-      (zero-cont (cont) (apply-handler cont val))
-      (binary-operation-op1-cont (op exp2 env cont) (apply-handler cont val))
-      (binary-operation-op2-cont (op val1 env cont) (apply-handler cont val))
-      (compare-operation-op1-cont (compare-op exp2 env cont) (apply-handler cont val))
-      (compare-operation-op2-cont (compare-op val1 env cont) (apply-handler cont val))
-      (zero-bool-exp-cont (cont) (apply-handler cont val))
-      (null-bool-exp-cont (cont) (apply-handler cont val))
-      (if-exp-cont (exp2 exp3 env cont) (apply-handler cont val))
-      (let-binding-cont (var vars exps body argenv finalenv cont) (apply-handler cont val))
-      (let*-binding-cont (var vars exps body env cont) (apply-handler cont val))
-      (car-exp-cont (cont) (apply-handler cont val))
-      (cdr-exp-cont (cont) (apply-handler cont val))
-      (cons-exp-op1-cont (exp2 env cont) (apply-handler cont val))
-      (cons-exp-op2-cont (val1 cont) (apply-handler cont val))
-      (evaluate-list-exp-cont (listval exps env cont) (apply-handler cont val))
-      (cond-exp-cont (con preds cons env cont) (apply-handler cont val))
-      (print-exp-cont (cont) (apply-handler cont val))
-      (unpack-exp-cont (vars body env cont) (apply-handler cont val))
-      (rator-cont (rands env cont) (apply-handler cont val))
-      (evaluate-call-exp-rands-cont (proc argvals rands env cont) (apply-handler cont val))
-      (begin-exp-cont (subexps env cont) (apply-handler cont val))
-      (newref-exp-cont (cont) (apply-handler cont val))
-      (deref-exp-cont (cont) (apply-handler cont val))
-      (setref-exp-op1-cont (exp2 env cont) (apply-handler cont val))
-      (setref-exp-op2-cont (refval cont) (apply-handler cont val))
-      (trace-procedure-cont (cont) (apply-handler cont val)))))
-    (apply-handler o-cont val)))
+
+        (define report-uncaught-exception
+          (lambda ()
+            (eopl:error 'apply-handler "err: uncaught exception error: can not find any handler for exception")))
+
+        (let ((try-cont (pop-from-exception-stack)))
+          (if try-cont
+              (cases continuation try-cont
+                (try-exp-cont (var handler-exp env cont) (value-of/k handler-exp (extend-env var val env) o-cont))
+                (else (eopl:error 'apply-handler "not an try continuation: ~s" try-cont)))
+              (report-uncaught-exception)))))
+    (apply-handler)))
 
 
 (define expval->num
@@ -461,6 +436,30 @@
   (lambda ()
     (set! latest-avaiable-slot (+ latest-avaiable-slot 1))))
 
+
+(define the-exception-stack #f)
+
+(define empty-exception-stack
+  (lambda ()
+    (set! the-exception-stack '())))
+(define push-to-exception-stack
+  (lambda (cont)
+    (set! the-exception-stack (cons cont the-exception-stack))))
+(define pop-from-exception-stack
+  (lambda ()
+    (if (null? the-exception-stack)
+        #f
+        (let ((ele (top-of-exception-stack)))
+          (begin (set! the-exception-stack (cdr the-exception-stack))
+                 ele)))))
+
+(define top-of-exception-stack
+  (lambda ()
+    (if (null? the-exception-stack)
+        #f
+        (car the-exception-stack))))
+               
+
 (define trampoline
   (lambda (bounce)
     (if (expval? bounce)
@@ -472,6 +471,7 @@
     (cases program prog
       (a-program (exp)
                  (begin (initialize-store!)
+                        (empty-exception-stack)
                  (trampoline (value-of/k exp (init-env) (end-cont))))))))
 
 (define value-of-bool-exp/k
@@ -626,7 +626,9 @@
                   (value-of/k exp1 env (setref-exp-op1-cont exp2 env cont)))
 
       (try-exp (exp1 var handler-exp)
-               (value-of/k exp1 env (try-exp-cont var handler-exp env cont)))
+               (let ((try-cont (try-exp-cont var handler-exp env cont)))
+                 (begin (push-to-exception-stack try-cont)
+                        (value-of/k exp1 env try-cont))))
 
       (raise-exp (exp1)
                  (value-of/k exp1 env (raise-exp-cont cont)))
@@ -850,7 +852,7 @@ setref(counter, +(deref(counter), 1)); deref(counter)
 ;;;section 5.3 imperative language is too easy to understand .
 
 ;;test for Exception
-;(run "raise 100")
+(run "raise 100")
 (check-equal? (run "let index
            = proc (n)
               letrec inner (lst)
