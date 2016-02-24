@@ -49,7 +49,7 @@
     (expression ("raise" expression) raise-exp)
     (expression ("resume" expression) resume-exp)
     (expression ("letcc" identifier "in" expression) letcc-exp)
-    (expression ("throw" expression "to" expression) throw-exp)
+    ;(expression ("throw" expression "to" expression) throw-exp)
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
     (boolexpression ("zero?" "(" expression ")") zero?-bool-exp)
@@ -139,7 +139,7 @@
   (raise-exp (exp expression?))
   (resume-exp (exp expression?))
   (letcc-exp (var identifier?) (exp expression?))
-  (throw-exp (exp1 expression?) (exp2 expression?))
+ ; (throw-exp (exp1 expression?) (exp2 expression?))
 
 
   ;;used for lexical addressing
@@ -182,11 +182,13 @@
                    (saved-env environment?))
   (dynamic-binding-procedure (vars (list-of identifier?))
                              (body expression?))
+  (cont-procedure (cont continuation?))
   )
 
 (define apply-procedure
   (lambda (proc1 args env cont)
     (cases proc proc1
+      (cont-procedure (captured-cont) (apply-cont captured-cont (car args)))
       (procedure (vars body saved-env)
                  (value-of/k body (extend-multivars-env vars args saved-env) cont))
       (dynamic-binding-procedure (vars body)
@@ -202,6 +204,8 @@
       (lambda (expect actual)
         (list (= expect actual) expect actual)))
     (cases proc proc1
+      (cont-procedure (cont)
+                      (check-match 1 n))
       (procedure (vars body saved-env)
                  (check-match (length vars) n))
       (dynamic-binding-procedure (vars body)
@@ -271,8 +275,8 @@
   (try-exp-cont (var identifier?) (handler-exp expression?) (env environment?) (cont continuation?))
   (raise-exp-cont (cont continuation?))
   (resume-exp-cont (cont continuation?))
-  (throw-exp-op1-cont (exp expression?) (env environment?) (cont continuation?))
-  (throw-exp-op2-cont (val expval?) (cont continuation?))
+ ; (throw-exp-op1-cont (exp expression?) (env environment?) (cont continuation?))
+ ; (throw-exp-op2-cont (val expval?) (cont continuation?))
 
   
   )
@@ -395,10 +399,10 @@
       (resume-exp-cont (cont)
                        (apply-cont cont val))
 
-      (throw-exp-op1-cont (exp env cont)
-                          (value-of/k exp env (throw-exp-op2-cont val cont)))
-      (throw-exp-op2-cont (val1 cont)
-                          (apply-cont (expval->cont val) val1))
+      ;(throw-exp-op1-cont (exp env cont)
+      ;                    (value-of/k exp env (throw-exp-op2-cont val cont)))
+      ;(throw-exp-op2-cont (val1 cont)
+      ;                    (apply-cont (expval->cont val) val1))
                         
       ))))
 
@@ -695,10 +699,10 @@
                   (value-of/k exp1 env (resume-exp-cont (expval->cont (apply-env env '$)))))
 
       (letcc-exp (var exp)
-                 (value-of/k exp (extend-env var (cont-val cont) env) cont))
+                 (value-of/k exp (extend-env var (proc-val (cont-procedure cont)) env) cont))
 
-      (throw-exp (exp1 exp2)
-                 (value-of/k exp1 env (throw-exp-op1-cont exp2 env cont)))
+      ;(throw-exp (exp1 exp2)
+      ;           (value-of/k exp1 env (throw-exp-op1-cont exp2 env cont)))
       
       ;;lexical addressing; any occurence of the nameless expression we'll report an error
       (else
@@ -961,4 +965,7 @@ try (inner lst) catch (x) x in ((index 5) list(2, 3, 5))") (num-val 2))
 ;(run "/(1,0)")
 
 ;;test for exercise5.42
-(check-equal? (run "+(1, letcc x in throw -(100,2) to x)") (num-val 99))
+;(check-equal? (run "+(1, letcc x in throw -(100,2) to x)") (num-val 99))
+
+;test for exercise5.43
+(check-equal? (run "+(1, letcc x in (x -(100,2)))") (num-val 99))
