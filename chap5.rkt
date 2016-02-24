@@ -48,6 +48,8 @@
     (expression ("try" expression "catch" "(" identifier ")" expression) try-exp)
     (expression ("raise" expression) raise-exp)
     (expression ("resume" expression) resume-exp)
+    (expression ("letcc" identifier "in" expression) letcc-exp)
+    (expression ("throw" expression "to" expression) throw-exp)
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
     (boolexpression ("zero?" "(" expression ")") zero?-bool-exp)
@@ -136,6 +138,8 @@
   (try-exp (exp1 expression?) (var identifier?) (handler-exp expression?))
   (raise-exp (exp expression?))
   (resume-exp (exp expression?))
+  (letcc-exp (var identifier?) (exp expression?))
+  (throw-exp (exp1 expression?) (exp2 expression?))
 
 
   ;;used for lexical addressing
@@ -267,6 +271,8 @@
   (try-exp-cont (var identifier?) (handler-exp expression?) (env environment?) (cont continuation?))
   (raise-exp-cont (cont continuation?))
   (resume-exp-cont (cont continuation?))
+  (throw-exp-op1-cont (exp expression?) (env environment?) (cont continuation?))
+  (throw-exp-op2-cont (val expval?) (cont continuation?))
 
   
   )
@@ -388,6 +394,11 @@
                       (handle-exception cont val))
       (resume-exp-cont (cont)
                        (apply-cont cont val))
+
+      (throw-exp-op1-cont (exp env cont)
+                          (value-of/k exp env (throw-exp-op2-cont val cont)))
+      (throw-exp-op2-cont (val1 cont)
+                          (apply-cont (expval->cont val) val1))
                         
       ))))
 
@@ -682,6 +693,12 @@
  
       (resume-exp (exp1)
                   (value-of/k exp1 env (resume-exp-cont (expval->cont (apply-env env '$)))))
+
+      (letcc-exp (var exp)
+                 (value-of/k exp (extend-env var (cont-val cont) env) cont))
+
+      (throw-exp (exp1 exp2)
+                 (value-of/k exp1 env (throw-exp-op1-cont exp2 env cont)))
       
       ;;lexical addressing; any occurence of the nameless expression we'll report an error
       (else
@@ -942,3 +959,6 @@ try (inner lst) catch (x) x in ((index 5) list(2, 3, 5))") (num-val 2))
 ;;test for exercise5.38
 (check-equal? (run "/(6,2)") (num-val 3))
 ;(run "/(1,0)")
+
+;;test for exercise5.42
+(check-equal? (run "+(1, letcc x in throw -(100,2) to x)") (num-val 99))
