@@ -22,6 +22,7 @@
     (expression ("-" "(" expression "," expression ")") diff-exp)
     (expression ("+" "(" expression "," expression ")") add-exp)
     (expression ("*" "(" expression "," expression ")") multiply-exp)
+    (expression ("/" "(" expression "," expression ")") div-exp)
     (expression ("//" "(" expression "," expression ")") quotient-exp)
     (expression ("if" boolexpression "then" expression "else" expression) if-bool-exp)
     (expression ("let" (arbno identifier "=" expression) "in" expression) let-exp)
@@ -106,6 +107,7 @@
   (diff-exp (exp1 expression?) (exp2 expression?))
   (add-exp (exp1 expression?) (exp2 expression?))
   (multiply-exp (exp1 expression?) (exp2 expression?))
+  (div-exp (exp1 expression?) (exp2 expression?))
   (quotient-exp (exp1 expression?) (exp2 expression?))
   (bool-exp (exp1 boolexpression?))
   (if-bool-exp (bexp boolexpression?) (exp2 expression?) (exp3 expression?))
@@ -275,7 +277,9 @@
                                 (value-of/k exp2 env (binary-operation-op2-cont op val env cont)))
       
       (binary-operation-op2-cont (op val1 env cont)
-                            (apply-cont cont (num-val (op (expval->num val1) (expval->num val)))))
+                                 (if (and (eqv? op /) (zero? (expval->num val)))
+                                     (apply-cont (raise-exp-cont cont) (string-val "try to divide by 0"))
+                                     (apply-cont cont (num-val (op (expval->num val1) (expval->num val))))))
       
       (compare-operation-op1-cont (compare-op exp2 env cont)
                                   (value-of/k exp2 env (compare-operation-op2-cont compare-op val env cont)))
@@ -343,7 +347,7 @@
                     (if ok
                         (evaluate-call-exp-rands/k val '() (reverse rands) env cont)
                       ;;else raise exception
-                        (handle-exception cont (string-val (string-append "Exception wrong number of arguments expect:" (~a expect) ",actual:"  (~a actual)))))))
+                        (apply-cont (raise-exp-cont cont) (string-val (string-append "Exception wrong number of arguments expect:" (~a expect) ",actual:"  (~a actual)))))))
                         ;;(value-of/k (raise-exp (const-exp -100000)) env cont))))
                         ;(eopl:error 'callfunc " a proce- dure is called with the wrong number of arguments expect:~s, actual:~s" expect actual))))
 
@@ -589,6 +593,9 @@
      
       (multiply-exp (exp1 exp2)
                     (arithmetic-operation * exp1 exp2 env cont))
+      (div-exp (exp1 exp2)
+               (arithmetic-operation / exp1 exp2 env cont))
+
       
       (quotient-exp (exp1 exp2)
                     (arithmetic-operation remainder exp1 exp2 env cont))
@@ -904,3 +911,7 @@ try (inner lst) catch (x) x in ((index 5) list(2, 3, 5))") (num-val 2))
 (run " try let f = proc(n,m)
                 +(n,m)
          in (f 1 ) catch(x) x ")
+
+;;test for exercise5.38
+(check-equal? (run "/(6,2)") (num-val 3))
+;(run "/(1,0)")
