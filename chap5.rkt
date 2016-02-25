@@ -50,6 +50,7 @@
     (expression ("resume" expression) resume-exp)
     (expression ("letcc" identifier "in" expression) letcc-exp)
     ;(expression ("throw" expression "to" expression) throw-exp)
+    (expression ("callcc" "(" expression ")") callcc-exp)
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
     (boolexpression ("zero?" "(" expression ")") zero?-bool-exp)
@@ -140,6 +141,7 @@
   (resume-exp (exp expression?))
   (letcc-exp (var identifier?) (exp expression?))
  ; (throw-exp (exp1 expression?) (exp2 expression?))
+  (callcc-exp (exp expression?))
 
 
   ;;used for lexical addressing
@@ -277,6 +279,7 @@
   (resume-exp-cont (cont continuation?))
  ; (throw-exp-op1-cont (exp expression?) (env environment?) (cont continuation?))
  ; (throw-exp-op2-cont (val expval?) (cont continuation?))
+  (callcc-cont (env environment?) (cont continuation?))
 
   
   )
@@ -398,11 +401,24 @@
                       (handle-exception cont val))
       (resume-exp-cont (cont)
                        (apply-cont cont val))
+      
 
       ;(throw-exp-op1-cont (exp env cont)
       ;                    (value-of/k exp env (throw-exp-op2-cont val cont)))
       ;(throw-exp-op2-cont (val1 cont)
       ;                    (apply-cont (expval->cont val) val1))
+      (callcc-cont (env cont)
+                    (apply-procedure (expval->proc val)
+                                     (list (proc-val (procedure (list 'v)
+                                                                (call-exp (var-exp 'cont)
+                                                                                    (list (var-exp 'v))) ;;construct a call-exp of cont-procedure
+                                                                (extend-env 'cont (proc-val (cont-procedure cont)) env)))) 
+                                     env
+                                     cont))
+                                     
+                    
+                    
+                    
                         
       ))))
 
@@ -703,6 +719,8 @@
 
       ;(throw-exp (exp1 exp2)
       ;           (value-of/k exp1 env (throw-exp-op1-cont exp2 env cont)))
+      (callcc-exp (exp)
+                   (value-of/k exp env (callcc-cont env cont)))
       
       ;;lexical addressing; any occurence of the nameless expression we'll report an error
       (else
@@ -969,3 +987,14 @@ try (inner lst) catch (x) x in ((index 5) list(2, 3, 5))") (num-val 2))
 
 ;test for exercise5.43
 (check-equal? (run "+(1, letcc x in (x -(100,2)))") (num-val 99))
+
+
+
+(check-equal? (run "+(1,  let callwithc = proc (p)
+                              letcc cont in
+                                 (p proc(v) (cont v))
+                           in (callwithc proc(cont) (cont 2)))")
+              (num-val 3))
+
+(check-equal? (run "+(1, callcc(proc(cont) (cont 2) ))")
+              (num-val 3))
