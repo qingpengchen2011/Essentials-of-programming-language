@@ -1,6 +1,7 @@
 #lang eopl
 (require "./chap2.rkt")
 (require  "./chap2-from-section2.4-to-end.rkt")
+(require "./queue.rkt")
 (require rackunit)
 (require racket/format)
 (require racket/string)
@@ -51,6 +52,7 @@
     (expression ("letcc" identifier "in" expression) letcc-exp)
     ;(expression ("throw" expression "to" expression) throw-exp)
     (expression ("callcc" "(" expression ")") callcc-exp)
+    (expression ("spawn" "(" expression ")") spawn-exp)
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
     (boolexpression ("zero?" "(" expression ")") zero?-bool-exp)
@@ -142,6 +144,7 @@
   (letcc-exp (var identifier?) (exp expression?))
  ; (throw-exp (exp1 expression?) (exp2 expression?))
   (callcc-exp (exp expression?))
+  (spawn-exp (exp expression?))
 
 
   ;;used for lexical addressing
@@ -219,7 +222,7 @@
                              
 
 (define-datatype continuation continuation?
-  (end-cont)
+  ;(end-cont)
   (zero-cont (cont continuation?))
   (binary-operation-op1-cont (op (lambda (o) #t))
                         (exp2 expression?)
@@ -280,6 +283,9 @@
  ; (throw-exp-op1-cont (exp expression?) (env environment?) (cont continuation?))
  ; (throw-exp-op2-cont (val expval?) (cont continuation?))
   (callcc-cont (env environment?) (cont continuation?))
+  (spawn-cont (env environment?) (cont continuation?))
+  (end-main-thread-cont)
+  (end-subthread-cont)
 
   
   )
@@ -287,10 +293,15 @@
 (define apply-cont
   (lambda (cont val)
     (lambda ()
+      (if (time-expired?)
+          (begin
+            (place-on-ready-queue! (lambda ()  (apply-cont cont val)))
+            (run-next-thread))
+          (begin (decrease-time!)
     (cases continuation cont
-      (end-cont ()
+      ;(end-cont ()
                 ;;(eopl:error "End of Computation.~%" val))
-                val)
+      ;          val)
       (zero-cont (cont) (apply-cont cont (num-val (- 0 (expval->num val)))))
       (binary-operation-op1-cont (op exp2 env cont)
                                 (value-of/k exp2 env (binary-operation-op2-cont op val env cont)))
@@ -350,7 +361,7 @@
                          (value-of/k con env cont)
                          (evaluate-cond-exp/k preds cons env cont)))
       (print-exp-cont (cont)
-                      (begin (eopl:printf "~s" val) (num-val 1)))
+                      (begin (eopl:printf "~s\n" val) (apply-cont cont (num-val 1))))
 
       (unpack-exp-cont (vars body env cont)
                        (let ((vals (expval->list val)))
@@ -390,7 +401,7 @@
                                   (apply-cont cont val)))
 
       (trace-procedure-cont (cont)
-                            (begin (eopl:printf "exiting func")
+                            (begin (eopl:printf "exiting func\n")
                                        (newline)
                                        (apply-cont cont val)))
 
@@ -415,12 +426,28 @@
                                                                 (extend-env 'cont (proc-val (cont-procedure cont)) env)))) 
                                      env
                                      cont))
+      (spawn-cont (env cont)
+                  (begin (place-on-ready-queue!
+                          (lambda ()
+                            (apply-procedure (expval->proc val) (list (num-val 28)) env (end-subthread-cont))))
+                         (apply-cont cont (num-val 73))))
+                                             
+
+      (end-main-thread-cont ()
+                            (begin
+                              ;(eopl:printf "end-main-thread-cont\n")
+                              (set-final-answer! val)
+                              (run-next-thread)))
+      (end-subthread-cont ()
+                          (begin
+                            ;(eopl:printf "end-subthread-cont\n")
+                            (run-next-thread)))
                                      
                     
                     
                     
                         
-      ))))
+      ))))))
 
 (define handle-exception
   (lambda (o-cont val)
@@ -533,7 +560,48 @@
     (if (null? the-exception-stack)
         #f
         (car the-exception-stack))))
-               
+
+;;scheduler
+(define the-ready-queue #f)
+(define the-final-answer #f)
+(define the-max-time-slice #f)
+(define the-time-remaining #f)
+
+(define initialize-scheduler!
+  (lambda (tick)
+    (begin
+      (set! the-ready-queue (empty-queue))
+      (set! the-final-answer 'unset)
+      (set! the-max-time-slice tick)
+      (set! the-time-remaining the-max-time-slice)
+      )))
+
+(define place-on-ready-queue!
+  (lambda (td)
+    (set! the-ready-queue
+          (enqueue the-ready-queue td))))
+
+(define run-next-thread
+  (lambda ()
+    (if (empty? the-ready-queue)
+        the-final-answer
+        (dequeue the-ready-queue
+                 (lambda (head others)
+                   (begin (set! the-ready-queue others)
+                          (set! the-time-remaining the-max-time-slice)
+                          (head)))))))
+(define set-final-answer!
+  (lambda (val)
+    (set! the-final-answer val)))
+
+(define time-expired?
+  (lambda ()
+    (zero? the-time-remaining)))
+
+(define decrease-time!
+  (lambda ()
+    (set! the-time-remaining (- the-time-remaining 1))))
+
 
 (define trampoline
   (lambda (bounce)
@@ -545,9 +613,10 @@
   (lambda (prog)
     (cases program prog
       (a-program (exp)
-                 (begin (initialize-store!)
+                 (begin (initialize-scheduler! 9)
+                        (initialize-store!)
                         (empty-exception-stack)
-                 (trampoline (value-of/k exp (init-env) (end-cont))))))))
+                 (trampoline (value-of/k exp (init-env) (end-main-thread-cont))))))))
 
 (define value-of-bool-exp/k
       (lambda (exp env cont)
@@ -721,6 +790,8 @@
       ;           (value-of/k exp1 env (throw-exp-op1-cont exp2 env cont)))
       (callcc-exp (exp)
                    (value-of/k exp env (callcc-cont env cont)))
+      (spawn-exp (exp)
+                 (value-of/k exp env (spawn-cont env cont)))
       
       ;;lexical addressing; any occurence of the nameless expression we'll report an error
       (else
@@ -998,3 +1069,14 @@ try (inner lst) catch (x) x in ((index 5) list(2, 3, 5))") (num-val 2))
 
 (check-equal? (run "+(1, callcc(proc(cont) (cont 2) ))")
               (num-val 3))
+
+
+(run "   letrec
+        noisy (l) = if null?(l)
+then 0
+else begin print(car(l)); (noisy cdr(l)) end
+in
+begin
+spawn(proc (d) (noisy list(1,2,3,4,5))) ; spawn(proc (d) (noisy list(6,7,8,9,10))) ; print(100);
+33
+end")
