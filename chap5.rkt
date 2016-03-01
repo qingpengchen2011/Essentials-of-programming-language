@@ -53,6 +53,9 @@
     ;(expression ("throw" expression "to" expression) throw-exp)
     (expression ("callcc" "(" expression ")") callcc-exp)
     (expression ("spawn" "(" expression ")") spawn-exp)
+    (expression ("mutex" "(" ")") mutex-exp)
+    (expression ("wait" "(" expression ")") wait-exp)
+    (expression ("signal" "(" expression ")") signal-exp)
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
     (boolexpression ("zero?" "(" expression ")") zero?-bool-exp)
@@ -145,6 +148,9 @@
  ; (throw-exp (exp1 expression?) (exp2 expression?))
   (callcc-exp (exp expression?))
   (spawn-exp (exp expression?))
+  (mutex-exp)
+  (wait-exp (exp expression?))
+  (signal-exp (exp expression?))
 
 
   ;;used for lexical addressing
@@ -173,9 +179,10 @@
   (bool-val (bool boolean?))
   (list-val (list (list-of expval?)))
   (proc-val (proc proc?))
-  (ref-val (n integer?))
+  (ref-val (n reference?))
   (string-val (s string?))
   (cont-val (cont continuation?))
+  (mutex-val (mtx mutex?))
   )
 
 (define-datatype proc proc?
@@ -189,6 +196,13 @@
                              (body expression?))
   (cont-procedure (cont continuation?))
   )
+
+(define-datatype reference reference?
+  (a-ref (n integer?)))
+
+(define-datatype mutex mutex?
+  (a-mutex (ref-to-closed? reference?)
+           (ref-to-wait-queue reference?)))
 
 (define apply-procedure
   (lambda (proc1 args env cont)
@@ -284,6 +298,8 @@
  ; (throw-exp-op2-cont (val expval?) (cont continuation?))
   (callcc-cont (env environment?) (cont continuation?))
   (spawn-cont (env environment?) (cont continuation?))
+  (wait-cont (cont continuation?))
+  (signal-cont (cont continuation?))
   (end-main-thread-cont)
   (end-subthread-cont)
 
@@ -388,16 +404,16 @@
                       (evaluate-begin-subexps/k subexps val env cont))
 
       (newref-exp-cont (cont)
-                       (apply-cont cont (newref val)))
+                       (apply-cont cont (ref-val (newref val))))
 
       (deref-exp-cont (cont)
-                      (apply-cont cont (deref val)))
+                      (apply-cont cont (deref (expval->ref val))))
 
       (setref-exp-op1-cont (exp2 env cont)
                            (value-of/k exp2 env (setref-exp-op2-cont val cont)))
 
       (setref-exp-op2-cont (refval cont)
-                           (begin (setref! refval val)
+                           (begin (setref! (expval->ref refval) val)
                                   (apply-cont cont val)))
 
       (trace-procedure-cont (cont)
@@ -431,6 +447,14 @@
                           (lambda ()
                             (apply-procedure (expval->proc val) (list (num-val 28)) env (end-subthread-cont))))
                          (apply-cont cont (num-val 73))))
+
+      (wait-cont (cont)
+                 (wait-for-mutex (expval->mutex val)
+                                 (lambda () (apply-cont cont (num-val 52)))))
+
+      (signal-cont (cont)
+                   (signal-mutex (expval->mutex val)
+                                 (lambda () (apply-cont cont (num-val 53)))))
                                              
 
       (end-main-thread-cont ()
@@ -494,7 +518,7 @@
 (define expval->ref
   (lambda (val)
     (cases expval val
-      (ref-val (n) n)
+      (ref-val (aref) aref)
       (else (eopl:error 'expval->ref "not a ref value.~s" val)))))
 
 (define expval->cont
@@ -502,6 +526,12 @@
     (cases expval val
       (cont-val (n) n)
       (else (eopl:error 'expval->cont "not a cont value.~s" val)))))
+
+(define expval->mutex
+  (lambda (val)
+    (cases expval val
+      (mutex-val (mtx) mtx)
+      (else (eopl:error 'expval->mutex "not a mutex value.~s" val)))))
 
 
 (define init-env
@@ -613,7 +643,7 @@
   (lambda (prog)
     (cases program prog
       (a-program (exp)
-                 (begin (initialize-scheduler! 9)
+                 (begin (initialize-scheduler! 5)
                         (initialize-store!)
                         (empty-exception-stack)
                  (trampoline (value-of/k exp (init-env) (end-main-thread-cont))))))))
@@ -677,17 +707,54 @@
         (let ((i (get-latest-avaiable-slot)))
           (begin (vector-set! the-store i expval)
                  (update-latest-avaiable-slot)
-                 (ref-val i)))))
+                 (a-ref i)))))
 
     (define deref
       (lambda (refval)
-        (let ((i (expval->ref refval)))
-          (vector-ref the-store i))))
+          (cases reference refval
+            (a-ref (i)
+                   (vector-ref the-store i)))))
 
     (define setref!
       (lambda (refval expval)
-        (let ((i (expval->ref refval)))
-          (begin (vector-set! the-store i expval)))))
+          (cases reference refval
+            (a-ref (i)
+                   (begin (vector-set! the-store i expval))))))
+
+    (define new-mutex
+      (lambda ()
+        (a-mutex (newref #f)
+                 (newref '()))))
+
+    (define wait-for-mutex
+      (lambda (mtx th)
+        (cases mutex mtx
+          (a-mutex (ref-to-closed? ref-to-wait-queue)
+                   (cond ((deref ref-to-closed?)
+                          (begin (setref! ref-to-wait-queue
+                                          (enqueue (deref ref-to-wait-queue) th))
+                                 (run-next-thread)))
+                         (else
+                          (begin (setref! ref-to-closed? #t)
+                                 (th))))))))
+    (define signal-mutex
+      (lambda (mtx th)
+        (cases mutex mtx
+          (a-mutex (ref-to-closed? ref-to-wait-queue)
+                   (let ((closed? (deref ref-to-closed?))
+                         (wait-queue (deref ref-to-wait-queue)))
+                     (if closed?
+                         (if (empty? wait-queue)
+                             (begin (setref! ref-to-closed? #f)
+                                    (th))
+                             (dequeue wait-queue
+                                      (lambda (first-waiting-th other-waiting-ths)
+                                        (begin (place-on-ready-queue! first-waiting-th)
+                                               (setref! ref-to-wait-queue other-waiting-ths)
+                                               (th)))))
+                         (th)))))))
+                         
+                         
 
 (define value-of/k
   (lambda (exp env cont)
@@ -792,6 +859,15 @@
                    (value-of/k exp env (callcc-cont env cont)))
       (spawn-exp (exp)
                  (value-of/k exp env (spawn-cont env cont)))
+
+      (mutex-exp ()
+                 (apply-cont cont (mutex-val (new-mutex))))
+
+      (wait-exp (exp)
+                (value-of/k exp env (wait-cont cont)))
+
+      (signal-exp (exp)
+                  (value-of/k exp env (signal-cont cont)))
       
       ;;lexical addressing; any occurence of the nameless expression we'll report an error
       (else
@@ -1079,4 +1155,38 @@ in
 begin
 spawn(proc (d) (noisy list(1,2,3,4,5))) ; spawn(proc (d) (noisy list(6,7,8,9,10))) ; print(100);
 33
+end")
+
+
+
+;;without mutex
+(run "   let x = newref(0)
+      in let incrx = proc (id)
+                       proc (dummy)
+                        begin 
+                        setref( x ,+(deref(x),1));
+                        print(deref(x)) end
+      in begin
+          spawn((incrx 100));
+          spawn((incrx 200));
+          spawn((incrx 300))
+end")
+
+
+
+;;test for mutex
+(run "let x = newref(0)
+      in let mut = mutex()
+      in let incrx = proc (id)
+                       proc (dummy)
+                        begin
+                         wait(mut);
+                         setref(x, +(deref(x), 1));
+                         print(deref(x));
+                         signal(mut)
+end
+      in begin
+          spawn((incrx 100));
+          spawn((incrx 200));
+          spawn((incrx 300))
 end")
