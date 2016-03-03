@@ -56,6 +56,7 @@
     (expression ("mutex" "(" ")") mutex-exp)
     (expression ("wait" "(" expression ")") wait-exp)
     (expression ("signal" "(" expression ")") signal-exp)
+    (expression ("yield" "(" ")") yield-exp)
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
     (boolexpression ("zero?" "(" expression ")") zero?-bool-exp)
@@ -151,6 +152,7 @@
   (mutex-exp)
   (wait-exp (exp expression?))
   (signal-exp (exp expression?))
+  (yield-exp)
 
 
   ;;used for lexical addressing
@@ -868,6 +870,10 @@
 
       (signal-exp (exp)
                   (value-of/k exp env (signal-cont cont)))
+
+      (yield-exp ()
+                 (begin (place-on-ready-queue! (lambda () (apply-cont cont (num-val 99))))
+                        (run-next-thread)))
       
       ;;lexical addressing; any occurence of the nameless expression we'll report an error
       (else
@@ -1190,3 +1196,8 @@ end
           spawn((incrx 200));
           spawn((incrx 300))
 end")
+
+
+;;test for exercise 45
+
+(check-equal? (run "begin spawn(proc(d) print(1111)); yield() end") (num-val 99))
