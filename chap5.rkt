@@ -1205,6 +1205,65 @@ end
 end")
 
 
-;;test for exercise 45
+;;test for exercise 5.45
 
 (check-equal? (run "begin spawn(proc(d) print(1111)); yield() end") (num-val 99))
+
+
+;;test for exercise 5.47,
+;;dead lock; unable to run the two subthreads; the-ready-queue is left empty.
+(run "let mutone = mutex()
+        
+          muttwo = mutex()
+          in
+            begin
+               spawn(proc(d) begin wait(muttwo);
+                                   print(1001);
+                                   wait(mutone);
+                                   print(1002);
+                                   signal(mutone);
+                                   print(1003);
+                                   signal(muttwo);
+                                   print(1004)
+                             end);
+               spawn(proc(e) begin wait(mutone);
+                                   print(2001);
+                                   wait(muttwo);
+                                   print(2002);
+                                   signal(muttwo);
+                                   print(2003);
+                                   signal(mutone);
+                                   print(2004)
+                              end);
+              print(9999)
+               end")
+                       
+
+;;exercise5.52
+(run "let x = newref(0)
+          d = newref(3)
+      in let mut = mutex()
+             mutd = mutex()
+      in letrec incrx(id) = 
+                       proc (dummy)
+                        begin
+                         wait(mut);
+                         setref(x, +(deref(x), 1));
+                         signal(mut);
+                         wait(mutd);
+                         setref(d,-(deref(d),1));
+                         signal(mutd)
+                      end
+              valuex() =
+                       begin 
+                       wait(mutd);
+                       if zero?(deref(d))
+                          then begin signal(mutd); deref(x) end
+                          else begin signal(mutd); (valuex) end
+                       end
+      in begin
+          spawn((incrx 100));
+          spawn((incrx 200));
+          spawn((incrx 300));
+          (valuex)
+end")
