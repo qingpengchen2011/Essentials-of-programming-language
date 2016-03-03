@@ -611,7 +611,7 @@
 (define place-on-ready-queue!
   (lambda (td)
     (set! the-ready-queue
-          (enqueue the-ready-queue td))))
+          (enqueue the-ready-queue (list the-time-remaining td)))))
 
 (define run-next-thread
   (lambda ()
@@ -620,8 +620,15 @@
         (dequeue the-ready-queue
                  (lambda (head others)
                    (begin (set! the-ready-queue others)
-                          (set! the-time-remaining the-max-time-slice)
-                          (head)))))))
+                          (let ((time-remaining (car head))
+                                (th (cadr head)))
+                            (begin
+                              (if (zero? time-remaining)
+                                  (set! the-time-remaining the-max-time-slice)
+                                  (set! the-time-remaining time-remaining))
+                              (begin
+                                ;(eopl:printf "the-time-remaining:~s\n" the-time-remaining)
+                                     (th))))))))))
 (define set-final-answer!
   (lambda (val)
     (set! the-final-answer val)))
