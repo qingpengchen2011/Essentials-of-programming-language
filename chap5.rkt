@@ -57,6 +57,8 @@
     (expression ("wait" "(" expression ")") wait-exp)
     (expression ("signal" "(" expression ")") signal-exp)
     (expression ("yield" "(" ")") yield-exp)
+    (expression ("getpid" "(" ")") getpid-exp)
+    (expression ("getppid" "(" ")") getppid-exp)
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
     (boolexpression ("zero?" "(" expression ")") zero?-bool-exp)
@@ -153,6 +155,8 @@
   (wait-exp (exp expression?))
   (signal-exp (exp expression?))
   (yield-exp)
+  (getpid-exp)
+  (getppid-exp)
 
 
   ;;used for lexical addressing
@@ -302,6 +306,8 @@
   (spawn-cont (env environment?) (cont continuation?))
   (wait-cont (cont continuation?))
   (signal-cont (cont continuation?))
+  
+  
   (end-main-thread-cont)
   (end-subthread-cont)
 
@@ -313,7 +319,8 @@
     (lambda ()
       (if (time-expired?)
           (begin
-            (place-on-ready-queue! (lambda ()  (apply-cont cont val)))
+            (place-on-ready-queue! (cons (lambda ()  (apply-cont cont val))
+                                         the-current-running-thread-info))
             (run-next-thread))
           (begin (decrease-time!)
     (cases continuation cont
@@ -445,20 +452,27 @@
                                      env
                                      cont))
       (spawn-cont (env cont)
-                  (begin (place-on-ready-queue!
-                          (lambda ()
-                            (apply-procedure (expval->proc val) (list (num-val 28)) env (end-subthread-cont))))
-                         (apply-cont cont (num-val 73))))
+                  (let ((subid (next-thread-id))
+                        (pid (get-current-thread-id)))
+                    (begin (place-on-ready-queue!
+                            (list (lambda ()
+                                    (apply-procedure (expval->proc val) (list (num-val subid)) env (end-subthread-cont)))
+                                  the-max-time-slice
+                                  subid
+                                  pid))
+                           (apply-cont cont (num-val subid)))))
 
       (wait-cont (cont)
                  (wait-for-mutex (expval->mutex val)
-                                 (lambda () (apply-cont cont (num-val 52)))))
+                                 (cons (lambda ()
+                                         (apply-cont cont (num-val 52)))
+                                       the-current-running-thread-info)))
 
       (signal-cont (cont)
                    (signal-mutex (expval->mutex val)
                                  (lambda () (apply-cont cont (num-val 53)))))
-                                             
 
+                  
       (end-main-thread-cont ()
                             (begin
                               ;(eopl:printf "end-main-thread-cont\n")
@@ -597,7 +611,8 @@
 (define the-ready-queue #f)
 (define the-final-answer #f)
 (define the-max-time-slice #f)
-(define the-time-remaining #f)
+(define the-current-running-thread-info #f) ;;(the-time-remaining thread-id parent-thread-id)
+(define the-current-thread-id-used #f)
 
 (define initialize-scheduler!
   (lambda (tick)
@@ -605,13 +620,14 @@
       (set! the-ready-queue (empty-queue))
       (set! the-final-answer 'unset)
       (set! the-max-time-slice tick)
-      (set! the-time-remaining the-max-time-slice)
+      (set! the-current-running-thread-info (list the-max-time-slice 0 0))
+      (set! the-current-thread-id-used 0)
       )))
 
 (define place-on-ready-queue!
   (lambda (td)
     (set! the-ready-queue
-          (enqueue the-ready-queue (list the-time-remaining td)))))
+          (enqueue the-ready-queue td))))
 
 (define run-next-thread
   (lambda ()
@@ -620,12 +636,13 @@
         (dequeue the-ready-queue
                  (lambda (head others)
                    (begin (set! the-ready-queue others)
-                          (let ((time-remaining (car head))
-                                (th (cadr head)))
+                          (let ((time-remaining (cadr head))
+                                (th (car head))
+                                (ids (cddr head)))
                             (begin
                               (if (zero? time-remaining)
-                                  (set! the-time-remaining the-max-time-slice)
-                                  (set! the-time-remaining time-remaining))
+                                  (set! the-current-running-thread-info (cons the-max-time-slice ids))
+                                  (set! the-current-running-thread-info (cons time-remaining ids)))  
                               (begin
                                 ;(eopl:printf "the-time-remaining:~s\n" the-time-remaining)
                                      (th))))))))))
@@ -635,12 +652,26 @@
 
 (define time-expired?
   (lambda ()
-    (zero? the-time-remaining)))
+    (zero? (car the-current-running-thread-info))))
 
 (define decrease-time!
   (lambda ()
-    (set! the-time-remaining (- the-time-remaining 1))))
+    (set! the-current-running-thread-info (cons (- (car the-current-running-thread-info) 1)
+                                                (cdr the-current-running-thread-info)))))
 
+(define next-thread-id
+  (lambda ()
+    (let ((id (+ the-current-thread-id-used 1)))
+      (begin (set! the-current-thread-id-used id)
+             id))))
+
+(define get-current-thread-id
+  (lambda ()
+    (cadr the-current-running-thread-info)))
+
+(define get-current-thread-parent-id
+  (lambda ()
+    (caddr the-current-running-thread-info)))
 
 (define trampoline
   (lambda (bounce)
@@ -652,7 +683,7 @@
   (lambda (prog)
     (cases program prog
       (a-program (exp)
-                 (begin (initialize-scheduler! 5)
+                 (begin (initialize-scheduler! 50)
                         (initialize-store!)
                         (empty-exception-stack)
                  (trampoline (value-of/k exp (init-env) (end-main-thread-cont))))))))
@@ -745,7 +776,7 @@
                                  (run-next-thread)))
                          (else
                           (begin (setref! ref-to-closed? #t)
-                                 (th))))))))
+                                 ((car th)))))))))
     (define signal-mutex
       (lambda (mtx th)
         (cases mutex mtx
@@ -879,8 +910,14 @@
                   (value-of/k exp env (signal-cont cont)))
 
       (yield-exp ()
-                 (begin (place-on-ready-queue! (lambda () (apply-cont cont (num-val 99))))
+                 (begin (place-on-ready-queue!
+                         (cons (lambda () (apply-cont cont (num-val 99)))
+                               the-current-running-thread-info))
                         (run-next-thread)))
+      (getpid-exp ()
+                  (apply-cont cont (num-val (get-current-thread-id))))
+      (getppid-exp ()
+                   (apply-cont cont (num-val (get-current-thread-parent-id))))      
       
       ;;lexical addressing; any occurence of the nameless expression we'll report an error
       (else
@@ -1240,7 +1277,7 @@ end")
                        
 
 ;;exercise5.52
-(run "let x = newref(0)
+(check-equal? (run "let x = newref(0)
           d = newref(3)
       in let mut = mutex()
              mutd = mutex()
@@ -1266,4 +1303,22 @@ end")
           spawn((incrx 200));
           spawn((incrx 300));
           (valuex)
-end")
+end") (num-val 3))
+
+;;;test for exercise5.53
+(run "let*     child2 = proc(id)
+                  begin print(getpid());
+                        print(getppid());
+                        print(id)
+                  end
+               child  = proc(id)
+                  begin print(getpid());
+                        print(getppid());
+                        print(id);
+                        spawn(child2)
+                        
+                  end in
+          begin 
+          print(spawn(child));
+          print(spawn(child2))
+          end")
