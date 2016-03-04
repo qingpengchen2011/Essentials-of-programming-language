@@ -59,6 +59,7 @@
     (expression ("yield" "(" ")") yield-exp)
     (expression ("getpid" "(" ")") getpid-exp)
     (expression ("getppid" "(" ")") getppid-exp)
+    (expression ("kill" "(" expression ")") kill-exp)
     
     (boolexpression ("equal?" "(" expression "," expression ")") equal?-bool-exp)
     (boolexpression ("zero?" "(" expression ")") zero?-bool-exp)
@@ -157,6 +158,7 @@
   (yield-exp)
   (getpid-exp)
   (getppid-exp)
+  (kill-exp (exp expression?))
 
 
   ;;used for lexical addressing
@@ -306,6 +308,7 @@
   (spawn-cont (env environment?) (cont continuation?))
   (wait-cont (cont continuation?))
   (signal-cont (cont continuation?))
+  (kill-cont (cont continuation?) (env environment?))
   
   
   (end-main-thread-cont)
@@ -472,6 +475,9 @@
                    (signal-mutex (expval->mutex val)
                                  (lambda () (apply-cont cont (num-val 53)))))
 
+      (kill-cont (cont env)
+                 (apply-cont cont (bool-val (kill-thread (expval->num val) env))))
+
                   
       (end-main-thread-cont ()
                             (begin
@@ -482,18 +488,13 @@
                           (begin
                             ;(eopl:printf "end-subthread-cont\n")
                             (run-next-thread)))
-                                     
-                    
-                    
-                    
-                        
+
       ))))))
 
 (define handle-exception
   (lambda (o-cont val)
     (define apply-handler
       (lambda ()
-
         (define report-uncaught-exception
           (lambda ()
             (eopl:error 'apply-handler "err: uncaught exception ~s " val )))
@@ -636,7 +637,7 @@
         (dequeue the-ready-queue
                  (lambda (head others)
                    (begin (set! the-ready-queue others)
-                          (let ((time-remaining (cadr head))
+                          (let ((time-remaining (get-thread-remaining-time (cdr head)))
                                 (th (car head))
                                 (ids (cddr head)))
                             (begin
@@ -665,13 +666,40 @@
       (begin (set! the-current-thread-id-used id)
              id))))
 
+(define get-thread-id
+  (lambda (td-info)
+    (cadr td-info)))
+
+(define get-thread-parent-id
+  (lambda (td-info)
+    (caddr td-info)))
+
+(define get-thread-remaining-time
+  (lambda (td-info)
+    (car td-info)))
+
 (define get-current-thread-id
   (lambda ()
-    (cadr the-current-running-thread-info)))
+    (get-thread-id the-current-running-thread-info)))
 
 (define get-current-thread-parent-id
   (lambda ()
-    (caddr the-current-running-thread-info)))
+    (get-thread-parent-id the-current-running-thread-info)))
+
+(define get-current-thread-remaining-time
+  (lambda ()
+    (get-thread-remaining-time the-current-running-thread-info)))
+
+(define remove-thread-with-id-from-queue
+  (lambda (id queue)
+    (if (empty? queue)
+        (list #f queue)
+        (dequeue queue
+                 (lambda (head rest)
+                         (if (eqv? id (get-thread-id (cdr head)))
+                             (list #t rest)
+                             (let ((r (remove-thread-with-id-from-queue id rest)))
+                               (list (car r) (cons head (cdr r))))))))))
 
 (define trampoline
   (lambda (bounce)
@@ -683,7 +711,7 @@
   (lambda (prog)
     (cases program prog
       (a-program (exp)
-                 (begin (initialize-scheduler! 50)
+                 (begin (initialize-scheduler! 6)
                         (initialize-store!)
                         (empty-exception-stack)
                  (trampoline (value-of/k exp (init-env) (end-main-thread-cont))))))))
@@ -773,6 +801,7 @@
                    (cond ((deref ref-to-closed?)
                           (begin (setref! ref-to-wait-queue
                                           (enqueue (deref ref-to-wait-queue) th))
+                                 (eopl:printf "thread ~s is placed on waiting queue\n" (get-thread-id (cdr th)))
                                  (run-next-thread)))
                          (else
                           (begin (setref! ref-to-closed? #t)
@@ -793,6 +822,46 @@
                                                (setref! ref-to-wait-queue other-waiting-ths)
                                                (th)))))
                          (th)))))))
+
+    (define kill-thread-in-ready-queue
+      (lambda (id)
+        (let ((r (remove-thread-with-id-from-queue id the-ready-queue)))
+          (if (car r)
+              (begin (set! the-ready-queue (cadr r))
+                     (eopl:printf "find thread to be killed in ready queue\n")
+                     #t)
+              #f))))
+
+    (define kill-thread-in-waiting-queue
+      (lambda (id env)
+        (define kill-in-env
+          (lambda (env)
+            (cases environment env
+              (empty-env () #f)
+              (extend-env (var val saved-env)
+                          (cases expval val
+                            (mutex-val (mtx)
+                                       (cases mutex mtx
+                                         (a-mutex (ref-to-closed? ref-to-waiting-queue)
+                                                  (let ((r (remove-thread-with-id-from-queue id (deref ref-to-waiting-queue))))
+                                                    (if (car r)
+                                                        (begin (setref! ref-to-waiting-queue (cdr r))
+                                                               (eopl:printf "find thread to be killed in waiting queue\n")
+                                                               #t)
+                                                        (kill-in-env saved-env))))))
+                            (else
+                             (kill-in-env saved-env))))
+              (extend-env-rec (p-names procs-vars p-bodys saved-env)
+                              (kill-in-env saved-env)))))
+        (kill-in-env env)))
+
+
+
+    (define kill-thread
+      (lambda (id env)
+        (if (kill-thread-in-ready-queue id)
+            #t
+            (kill-thread-in-waiting-queue id env))))
                          
                          
 
@@ -917,7 +986,10 @@
       (getpid-exp ()
                   (apply-cont cont (num-val (get-current-thread-id))))
       (getppid-exp ()
-                   (apply-cont cont (num-val (get-current-thread-parent-id))))      
+                   (apply-cont cont (num-val (get-current-thread-parent-id))))
+
+      (kill-exp (exp)
+                (value-of/k exp env (kill-cont cont env)))
       
       ;;lexical addressing; any occurence of the nameless expression we'll report an error
       (else
@@ -1322,3 +1394,35 @@ end") (num-val 3))
           print(spawn(child));
           print(spawn(child2))
           end")
+
+;;test for 5.54
+;;test for kill in waiting queue
+(run " let m = mutex() in
+         letrec p(id) = 
+                begin
+                      wait(m);
+                      print(222);
+                      
+                      (p id)
+                      end
+                busywait(t) =
+                    if zero?(t) then 1
+                      else (busywait -(t,1))
+            in
+             begin wait(m);
+                   let id = spawn(p) in
+                      begin 
+                       (busywait 10);
+                       print(kill(id))
+                      end
+                   
+             end")
+;;test for kill in ready queue
+(run "letrec p(id) = 
+            begin
+                 print(222);
+                 (p id)
+            end  
+            in
+              print(kill(spawn(p)))")
+        
